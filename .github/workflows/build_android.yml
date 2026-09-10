@@ -1,101 +1,95 @@
-name: "tagged-release"
+name: "vau-release"
+
+# Builds the android tailscaled for this fork and publishes a SIGNED release.
+#
+# Every third-party action is pinned to a commit SHA, not a tag: a tag can be
+# moved to different code, and this workflow builds a binary that later runs as
+# root on a phone. The NDK and UPX actions are gone entirely — the build is
+# CGO-free (no NDK needed) and UPX only inflates RSS on a handset that already
+# hits LOW_MEMORY (see docs/vau/AUDIT.md, M10).
+
 on:
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: false
   push:
     tags:
-      - "v*-android"
-      - "v*-android-pre"
+      - "v*-vau*"
+
 permissions:
   contents: write
+
 jobs:
   build:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Determine release type
-          id: release_type
-          run: |
-            if [[ "${{ github.ref_name }}" == *"-pre" ]]; then
-              echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            else
-              echo "is_prerelease=false" >> $GITHUB_OUTPUT
-            fi
-        - name: Checkout code
-          uses: actions/checkout@v4
-          with:
-            fetch-depth: 0
-          
-        - name: Set up Go
-          uses: actions/setup-go@v5
-          with:
-            go-version-file: 'go.mod'
-            check-latest: true
-          id: go
-        - run: go version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
-        - name: Install Android NDK
-          id: setup-ndk
-          uses: nttld/setup-ndk@v1
-          with:
-            ndk-version: r27c
-            add-to-path: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
 
-        - name: Install UPX
-          uses: crazy-max/ghaction-upx@v3
-          with:
-            install-only: true
+      - name: Install minisign
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq minisign
 
-        - name: Build arm
-          run: |
-            export ANDROID_NDK_PATH="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-            if [[ "${{ steps.release_type.outputs.is_prerelease }}" == "true" ]]; then
-              ./scripts/android.sh build --pre --upx arm
-            else
-              ./scripts/android.sh build --upx arm
-            fi
-        - name: Build arm64
-          run: |
-            export ANDROID_NDK_PATH="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-            if [[ "${{ steps.release_type.outputs.is_prerelease }}" == "true" ]]; then
-              ./scripts/android.sh build --pre --upx arm64
-            else
-              ./scripts/android.sh build --upx arm64
-            fi
-        
-        - name: Compress artifacts
-          id: compress_artifacts
-          run: |
-            eval "$(./build_dist.sh shellvars)"
-            echo "VERSION_SHORT=$VERSION_SHORT" >> $GITHUB_OUTPUT
-            tar -czf dist/tailscale_${VERSION_SHORT}_arm64.tgz -C dist --transform='s/tailscaled.arm64/tailscaled/' tailscaled.arm64
-            tar -czf dist/tailscale_${VERSION_SHORT}_arm.tgz -C dist --transform='s/tailscaled.arm/tailscaled/' tailscaled.arm
-            ls -lh dist
+      - name: Guard — the self-updater must stay out of the build
+        run: |
+          set -euo pipefail
+          # The `clientupdate` feature tag is what puts `tailscale update` in the
+          # binary: it downloads tailscaled from a third-party repo, unsigned,
+          # and installs it 0777 (docs/vau/AUDIT.md, C1). If someone drops this
+          # from the remove list, the release must fail here, not on a phone.
+          grep -q 'clientupdate' scripts/android.sh
+          echo "ok: clientupdate is in the remove list"
 
-        - name: Upload artifacts
-          uses: actions/upload-artifact@v4
-          with:
-            name: release-artifacts
-            path: |
-              dist/*.tgz
+      - name: Build arm64 (no cgo)
+        run: ./scripts/android.sh build --nocgo arm64
 
-        - name: Upload artifacts for arm
-          uses: actions/upload-artifact@v4
-          with:
-            name: tailscaled.arm.${{ steps.compress_artifacts.outputs.VERSION_SHORT }}
-            path: |
-              dist/tailscaled.arm
-        
-        - name: Upload artifacts for arm64
-          uses: actions/upload-artifact@v4
-          with:
-            name: tailscaled.arm64.${{ steps.compress_artifacts.outputs.VERSION_SHORT }}
-            path: |
-              dist/tailscaled.arm64
+      - name: Build arm (no cgo)
+        run: ./scripts/android.sh build --nocgo arm
 
-        - name: Create Release
-          uses: softprops/action-gh-release@v3
-          with:
-            token: "${{ secrets.GITHUB_TOKEN }}"
-            prerelease: ${{ steps.release_type.outputs.is_prerelease }}
-            generate_release_notes: true
-            files: |
-              dist/*.tgz
+      - name: Package and checksum
+        run: |
+          set -euo pipefail
+          eval "$(./build_dist.sh shellvars)"
+          echo "VERSION_SHORT=$VERSION_SHORT" >> "$GITHUB_ENV"
+          cd dist
+          tar -czf "tailscale_${VERSION_SHORT}_arm64.tgz" --transform='s/tailscaled.arm64/tailscaled/' tailscaled.arm64
+          tar -czf "tailscale_${VERSION_SHORT}_arm.tgz"   --transform='s/tailscaled.arm/tailscaled/'   tailscaled.arm
+          sha256sum tailscale_*.tgz tailscaled.arm64 tailscaled.arm > SHA256SUMS
+          ls -lh
+
+      - name: Sign artifacts
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: ./scripts/sign.sh dist/tailscale_*.tgz dist/SHA256SUMS
+
+      - name: Verify the signatures with the published public key
+        run: |
+          set -euo pipefail
+          # Proves the release verifies with the key people are told to use,
+          # rather than merely with whatever key CI happened to sign with.
+          PUB=$(grep -m1 '^RW' docs/BUILD.md)
+          for sig in dist/*.minisig; do
+            minisign -Vm "${sig%.minisig}" -P "$PUB"
+          done
+
+      - name: Create release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-vau', env.VERSION_SHORT) }}
+          prerelease: ${{ inputs.prerelease == true }}
+          generate_release_notes: true
+          files: |
+            dist/*.tgz
+            dist/*.minisig
+            dist/SHA256SUMS
