@@ -65,7 +65,10 @@ jobs:
           echo "VERSION_SHORT=$VERSION_SHORT" >> "$GITHUB_ENV"
           cd dist
           tar -czf "tailscale_${VERSION_SHORT}_arm64.tgz" --transform='s/tailscaled.arm64/tailscaled/' tailscaled.arm64
-          sha256sum tailscale_*.tgz tailscaled.arm64 > SHA256SUMS
+          # Only what actually ships: a SHA256SUMS naming the bare tailscaled.arm64
+          # makes `sha256sum -c` fail for everyone who downloads the release,
+          # because that file is not a release asset.
+          sha256sum tailscale_*.tgz > SHA256SUMS
           ls -lh
 
       - name: Sign artifacts
