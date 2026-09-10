@@ -21,14 +21,14 @@
   .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);
     border-radius:12px;padding:4px;margin-bottom:14px}
   .tabs button{flex:1;border:0;background:transparent;color:var(--dim);
-    font-size:14px;font-weight:600;padding:9px;border-radius:9px;
+    font-size:13px;font-weight:600;padding:9px 4px;border-radius:9px;
     -webkit-tap-highlight-color:transparent}
   .tabs button.active{background:var(--accent);color:#fff}
   .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
   button{border:0;border-radius:12px;padding:12px 14px;font-size:14px;
     font-weight:600;color:#fff;background:var(--accent);
     -webkit-tap-highlight-color:transparent}
-  .row>button{flex:1;min-width:130px}
+  .row>button{flex:1;min-width:120px}
   button.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
   button.ok{background:var(--ok);color:#06210f}
   button.bad{background:var(--bad);color:#2a0710}
@@ -50,7 +50,7 @@
   .chip.bad{background:rgba(255,92,114,.14);color:var(--bad)}
   .chip.warn{background:rgba(255,180,84,.14);color:var(--warn)}
   .chip.dim{background:rgba(154,146,184,.14);color:var(--dim)}
-  .item button.act{flex:0 0 auto;min-width:88px;padding:8px 10px;font-size:13px}
+  .item button.act{flex:0 0 auto;min-width:78px;padding:8px 10px;font-size:13px}
   .val{font-variant-numeric:tabular-nums;color:var(--dim);font-size:13px}
   pre{background:#0a0812;border:1px solid var(--line);border-radius:12px;
     padding:12px;margin:0 0 4px;overflow:auto;max-height:38vh;
@@ -61,8 +61,10 @@
     overflow:auto;white-space:nowrap}
   .copyline button{flex:0 0 auto;min-width:0;padding:8px 12px}
   .muted{color:var(--dim);font-size:12px;text-align:center;padding:6px}
-  select{background:var(--card2);color:var(--txt);border:1px solid var(--line);
-    border-radius:10px;padding:10px;font-size:14px;flex:1;min-width:130px}
+  .hint{color:var(--dim);font-size:11px;padding:2px 2px 10px}
+  select,input{background:var(--card2);color:var(--txt);border:1px solid var(--line);
+    border-radius:10px;padding:10px;font-size:14px;flex:1;min-width:120px;
+    font-family:inherit}
   [hidden]{display:none}
 </style>
 </head>
@@ -75,17 +77,57 @@
 
 <div class="tabs">
   <button id="t-stan" class="active" onclick="showTab('stan')">Стан</button>
+  <button id="t-merezha" onclick="showTab('merezha')">Мережа</button>
   <button id="t-dii" onclick="showTab('dii')">Дії</button>
   <button id="t-log" onclick="showTab('log')">Журнал</button>
 </div>
 
 <!-- ===================== СТАН ===================== -->
 <section id="tab-stan">
-  <div class="row">
-    <button id="refresh" class="sec">↻ Оновити</button>
-  </div>
+  <div class="row"><button id="refresh" class="sec">↻ Оновити</button></div>
   <div class="card" id="node"><h2>Вузол</h2><div class="muted">завантаження…</div></div>
   <div class="card" id="peers"><h2>Вузли мережі</h2><div class="muted">завантаження…</div></div>
+</section>
+
+<!-- ===================== МЕРЕЖА (аналог адмінки) ===================== -->
+<section id="tab-merezha" hidden>
+  <div class="row"><button id="mrefresh" class="sec">↻ Оновити</button></div>
+
+  <div class="card" id="profile"><h2>Обліковий запис</h2><div class="muted">завантаження…</div></div>
+
+  <div class="card" id="exitcard">
+    <h2>Вихідний вузол</h2>
+    <div id="exitstate" class="muted">завантаження…</div>
+    <div class="row" style="margin:10px 0">
+      <select id="exitsel"><option value="">— не використовувати —</option></select>
+      <button id="exitapply" style="flex:0 0 auto">Застосувати</button>
+    </div>
+    <div class="hint">Порожній вибір вимикає вихідний вузол
+      (<code>tailscale set --exit-node=</code>).</div>
+  </div>
+
+  <div class="card" id="toggles"><h2>Налаштування вузла</h2><div class="muted">завантаження…</div></div>
+
+  <div class="card">
+    <h2>Ім'я вузла</h2>
+    <div class="row" style="margin:10px 0">
+      <input id="hostname" placeholder="moto-root" autocapitalize="off" autocorrect="off">
+      <button id="hostapply" class="sec" style="flex:0 0 auto">Змінити</button>
+    </div>
+    <div class="hint">Лише латиниця, цифри й дефіс, до 63 символів.</div>
+  </div>
+
+  <div class="card">
+    <h2>Маршрути, які роздає вузол</h2>
+    <div class="row" style="margin:10px 0">
+      <input id="routes" placeholder="192.168.0.0/24,10.0.0.0/8" autocapitalize="off" autocorrect="off">
+      <button id="routesapply" class="sec" style="flex:0 0 auto">Застосувати</button>
+    </div>
+    <div class="hint">Порожнє поле прибирає всі анонсовані маршрути. Маршрути ще
+      треба підтвердити в адмінці Tailscale.</div>
+  </div>
+
+  <div class="card"><h2>Вивід команди</h2><pre id="mout">—</pre></div>
 </section>
 
 <!-- ===================== ДІЇ ====================== -->
@@ -97,23 +139,29 @@
   <div class="row">
     <button id="restart" class="sec">↺ Перезапустити демон</button>
   </div>
-  <div class="card" id="pingcard">
+  <div class="card">
     <h2>Перевірка зв'язку</h2>
     <div class="row" style="margin:10px 0">
       <select id="peersel"><option value="">— вузол —</option></select>
       <button id="ping" class="sec" style="flex:0 0 auto">Ping</button>
     </div>
   </div>
+  <div class="card">
+    <h2>Діагностика</h2>
+    <div class="row" style="margin:10px 0">
+      <button id="netcheck" class="sec">Мережа (netcheck)</button>
+      <button id="dnsstatus" class="sec">DNS</button>
+      <button id="servestatus" class="sec">Serve</button>
+    </div>
+  </div>
   <div class="card"><h2>Вивід команди</h2><pre id="out">—</pre></div>
-  <div class="muted">Підключення виконується з прапорцями <code>--ssh --accept-dns=false</code>:
+  <div class="muted">Підключення виконується з <code>--ssh --accept-dns=false</code>:
     перехоплення DNS вимкнено навмисно, див. docs/vau/AUDIT.md (C2, C3).</div>
 </section>
 
 <!-- ===================== ЖУРНАЛ =================== -->
 <section id="tab-log" hidden>
-  <div class="row">
-    <button id="lrefresh" class="sec">↻ Оновити</button>
-  </div>
+  <div class="row"><button id="lrefresh" class="sec">↻ Оновити</button></div>
   <div class="card">
     <h2>Журнал модуля <span class="val" id="logmeta"></span></h2>
     <pre id="mlog">завантаження…</pre>
@@ -153,14 +201,24 @@ function row(label, sub, cls, text){
   return `<div class="item"><div class="k"><b>${esc(label)}</b><small>${esc(sub)}</small></div>`
        + (cls ? chip(cls, text) : "") + `</div>`;
 }
+// Markers are always split as SUBSTRINGS, never matched as whole lines: command
+// output does not reliably end with a newline (`status --json` does not), so a
+// closing brace and the next marker arrive glued together as "}@@MODE@@" and a
+// line-exact check silently swallows the marker.
+function section(text, from, to){
+  const a = text.split(from);
+  if(a.length < 2) return "";
+  return to ? a[1].split(to)[0] : a[1];
+}
 function showTab(name){
-  ["stan","dii","log"].forEach(t=>{
+  ["stan","merezha","dii","log"].forEach(t=>{
     document.getElementById("tab-"+t).hidden = (t!==name);
     document.getElementById("t-"+t).classList.toggle("active", t===name);
   });
   if(name==="log") loadLogs();
+  if(name==="merezha") loadNetwork();
 }
-function setOut(txt){ document.getElementById("out").textContent = txt || "—"; }
+function setOut(id, txt){ document.getElementById(id).textContent = txt || "—"; }
 
 /* ---------------- СТАН ---------------- */
 const STATE_UA = {
@@ -171,8 +229,7 @@ const STATE_UA = {
   Stopped:          ["bad",  "зупинено"],
   NoState:          ["bad",  "немає стану"],
 };
-
-let PEERS = [];
+let PEERS = [], EXITS = [], SELF = {};
 
 function daysLeft(iso){
   if(!iso || iso.startsWith("0001-01-01")) return null;   // expiry disabled
@@ -181,7 +238,7 @@ function daysLeft(iso){
 
 async function loadStatus(){
   const cmd =
-    `echo @@JSON@@; ${TS} status --json 2>&1;` +
+    `echo @@JSON@@; ${TS} status --json;` +
     `echo @@MODE@@; (grep -m1 '^TUN_MODE=' ${CONF} 2>/dev/null || echo TUN_MODE=userspace);` +
     `echo @@PIDS@@; for f in supervisor.pid health.pid tailscaled.pid; do ` +
     `p=$(cat ${STATE}/$f 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then echo "$f=$p"; else echo "$f=-"; fi; done`;
@@ -193,12 +250,11 @@ async function loadStatus(){
     return;
   }
 
-  let sec="", jsonTxt="", mode="userspace", pids={};
-  stdout.split("\n").forEach(l=>{
-    if(l==="@@JSON@@"||l==="@@MODE@@"||l==="@@PIDS@@"){ sec=l; return; }
-    if(sec==="@@JSON@@") jsonTxt += l+"\n";
-    else if(sec==="@@MODE@@" && l.startsWith("TUN_MODE=")) mode = l.slice(9).trim() || "userspace";
-    else if(sec==="@@PIDS@@"){ const i=l.indexOf("="); if(i>0) pids[l.slice(0,i)]=l.slice(i+1); }
+  const jsonTxt = section(stdout, "@@JSON@@", "@@MODE@@");
+  const mode = ((section(stdout, "@@MODE@@", "@@PIDS@@").match(/TUN_MODE=(\S+)/) || [])[1] || "userspace").replace(/["']/g,"");
+  const pids = {};
+  section(stdout, "@@PIDS@@").split("\n").map(s=>s.trim()).filter(Boolean).forEach(l=>{
+    const i = l.indexOf("="); if(i > 0) pids[l.slice(0,i)] = l.slice(i+1);
   });
 
   let st=null;
@@ -208,27 +264,26 @@ async function loadStatus(){
   if(!st){
     h += row("Демон", "сокет не відповідає — демон не запущено або він завис", "bad", "недоступний");
     h += row("Наглядач", "supervisor.pid = "+(pids["supervisor.pid"]||"-"),
-             pids["supervisor.pid"]!=="-"?"ok":"bad", pids["supervisor.pid"]!=="-"?"живий":"немає");
+             pids["supervisor.pid"] && pids["supervisor.pid"]!=="-" ? "ok":"bad",
+             pids["supervisor.pid"] && pids["supervisor.pid"]!=="-" ? "живий":"немає");
     card.innerHTML = h;
     document.getElementById("peers").innerHTML = '<h2>Вузли мережі</h2><div class="muted">немає даних</div>';
     return;
   }
 
+  SELF = st.Self || {};
   const bs = st.BackendState || "?";
   const [bcls, btxt] = STATE_UA[bs] || ["dim", bs];
   h += row("Демон", "BackendState = "+bs, bcls, btxt);
+  h += row("Ім'я вузла", (SELF.OS||"android")+" · "+(SELF.DNSName||"").replace(/\.$/,""), null, "");
+  h += row("Адреси", (SELF.TailscaleIPs||[]).join("  ·  ") || "немає", null, "");
 
-  const self = st.Self || {};
-  h += row("Ім'я вузла", (self.OS||"android")+" · "+(self.DNSName||"").replace(/\.$/,""), null, "");
-  h += row("Адреси", (self.TailscaleIPs||[]).join("  ·  ") || "немає", null, "");
-
-  const dl = daysLeft(self.KeyExpiry);
+  const dl = daysLeft(SELF.KeyExpiry);
   if(dl === null){
     h += row("Термін ключа", "вимкнено в адмінці — вузол не відпаде сам", "ok", "безстроковий");
   }else{
-    const cls = dl < 0 ? "bad" : (dl < 30 ? "warn" : "ok");
-    const txt = dl < 0 ? "прострочений" : dl+" дн.";
-    h += row("Термін ключа", (self.KeyExpiry||"").slice(0,10)+" — після цієї дати вузол зникне з мережі", cls, txt);
+    h += row("Термін ключа", (SELF.KeyExpiry||"").slice(0,10)+" — після цієї дати вузол зникне з мережі",
+             dl<0?"bad":(dl<30?"warn":"ok"), dl<0?"прострочений":dl+" дн.");
   }
 
   const modeOk = mode === "userspace";
@@ -237,17 +292,16 @@ async function loadStatus(){
       : "kernel TUN — маршрути й iptables змінюються, потрібні фікси DNS з аудиту",
     modeOk ? "ok" : "warn", mode);
 
-  h += row("Процеси", `наглядач ${pids["supervisor.pid"]||"-"} · здоров'я ${pids["health.pid"]||"-"} · демон ${pids["tailscaled.pid"]||"-"}`,
-           pids["tailscaled.pid"]!=="-" ? "ok" : "bad",
-           pids["tailscaled.pid"]!=="-" ? "у роботі" : "немає");
+  const dpid = pids["tailscaled.pid"];
+  h += row("Процеси", `наглядач ${pids["supervisor.pid"]||"-"} · здоров'я ${pids["health.pid"]||"-"} · демон ${dpid||"-"}`,
+           dpid && dpid!=="-" ? "ok" : "bad", dpid && dpid!=="-" ? "у роботі" : "немає");
 
   if(st.AuthURL){
-    // The URL is NOT interpolated into an onclick: esc() does not escape quotes,
-    // and everything in status --json is data from elsewhere in the tailnet.
-    // The listener is attached below, with the value held in a closure.
+    // The URL is never interpolated into an attribute: esc() does not escape
+    // quotes, and everything in status --json comes from elsewhere in the tailnet.
     h += `<div class="copyline"><code id="authurl"></code>`
-       + `<button class="sec" id="authcopy">копіювати</button></div>`;
-    h += '<div class="muted">Відкрий це посилання, щоб авторизувати вузол.</div>';
+       + `<button class="sec" id="authcopy">копіювати</button></div>`
+       + '<div class="muted">Відкрий це посилання, щоб авторизувати вузол.</div>';
   }
   card.innerHTML = h;
   if(st.AuthURL){
@@ -259,38 +313,147 @@ async function loadStatus(){
   PEERS = Object.values(st.Peer || {}).map(p=>({
     name: (p.HostName||"?"),
     ip:   (p.TailscaleIPs||[])[0] || "",
+    os:   p.OS || "",
     online: !!p.Online,
     direct: !!p.CurAddr,
     relay: p.Relay || "",
     last: p.LastSeen || "",
+    exit: !!p.ExitNodeOption,
+    isExit: !!p.ExitNode,
   })).sort((a,b)=> (b.online-a.online) || a.name.localeCompare(b.name));
+  EXITS = PEERS.filter(p=>p.exit);
 
   let ph = `<h2>Вузли мережі · ${PEERS.filter(p=>p.online).length} у мережі з ${PEERS.length}</h2>`;
   PEERS.forEach(p=>{
     const sub = p.online
-      ? (p.ip + " · " + (p.direct ? "напряму" : ("через DERP "+(p.relay||"?"))))
+      ? (p.ip + " · " + (p.direct ? "напряму" : ("через DERP "+(p.relay||"?"))) + (p.os?" · "+p.os:""))
       : (p.ip + " · востаннє " + (p.last||"?").slice(0,10));
-    ph += row(p.name, sub, p.online?"ok":"dim", p.online?"у мережі":"офлайн");
+    ph += row(p.name + (p.isExit ? " (вихідний)" : ""), sub, p.online?"ok":"dim", p.online?"у мережі":"офлайн");
   });
   document.getElementById("peers").innerHTML = ph;
 
-  const sel = document.getElementById("peersel");
-  sel.innerHTML = '<option value="">— вузол —</option>' +
-    PEERS.filter(p=>p.ip).map(p=>`<option value="${esc(p.ip)}">${esc(p.name)}</option>`).join("");
+  const fill = (sel, list, empty)=>{
+    const el = document.getElementById(sel);
+    if(!el) return;
+    el.innerHTML = `<option value="">${empty}</option>` +
+      list.filter(p=>p.ip).map(p=>`<option value="${esc(p.ip)}">${esc(p.name)}</option>`).join("");
+  };
+  fill("peersel", PEERS, "— вузол —");
+  fill("exitsel", EXITS, "— не використовувати —");
 }
 
+/* ---------------- МЕРЕЖА ---------------- */
+// tailscale set has no "get": the build has no `debug` subcommand, so a toggle
+// cannot be rendered as a checkbox that claims to know the current value.
+// Everything below is either read from a command that really reports state
+// (dns status, status --json) or presented as an action with its output shown.
+async function loadNetwork(){
+  // The exit-node dropdown is built from status --json (loadStatus), so
+  // `exit-node list` is deliberately NOT fetched here: asking for output nobody
+  // reads is how a UI starts lying about where its numbers come from.
+  const cmd = `echo @@PROF@@; ${TS} switch --list 2>&1;`
+            + `echo @@DNS@@; ${TS} dns status 2>&1 | head -6`;
+  const {stdout} = await sh(cmd);
+
+  const prof = section(stdout, "@@PROF@@", "@@DNS@@").trim();
+  let ph = "<h2>Обліковий запис</h2>";
+  prof.split("\n").filter(l=>l.trim() && !/^ID\s/.test(l)).forEach(l=>{
+    const f = l.trim().split(/\s+/);
+    ph += row(f[2] || l.trim(), "tailnet: " + (f[1]||"?"), f[2] && f[2].endsWith("*") ? "ok" : "dim",
+              f[2] && f[2].endsWith("*") ? "активний" : "");
+  });
+  document.getElementById("profile").innerHTML = ph || '<h2>Обліковий запис</h2><div class="muted">немає даних</div>';
+
+  const dns = section(stdout, "@@DNS@@");
+  const dnsOn = /Tailscale DNS: enabled/i.test(dns);
+  const current = PEERS.find(p=>p.isExit);
+  document.getElementById("exitstate").innerHTML =
+    row("Поточний вихідний вузол", current ? current.ip : "трафік іде напряму, повз мережу",
+        current ? "ok" : "dim", current ? current.name : "вимкнено");
+
+  let th = "<h2>Налаштування вузла</h2>";
+  th += `<div class="item"><div class="k"><b>DNS мережі</b>`
+      + `<small>${dnsOn ? "запити йдуть на резолвер Tailscale" : "вимкнено навмисно, див. C2/C3 в аудиті"}</small></div>`
+      + chip(dnsOn?"ok":"dim", dnsOn?"увімкнено":"вимкнено")
+      + `<button class="act sec" data-set="--accept-dns=${dnsOn?"false":"true"}">${dnsOn?"Вимкнути":"Увімкнути"}</button></div>`;
+
+  const acts = [
+    ["Tailscale SSH",            "приймати вхідні SSH через мережу",        "--ssh=true",                       "--ssh=false"],
+    ["Приймати маршрути",        "маршрути, які роздають інші вузли",       "--accept-routes=true",             "--accept-routes=false"],
+    ["Пропонувати як вихідний",  "цей телефон стане вихідним вузлом",       "--advertise-exit-node=true",       "--advertise-exit-node=false"],
+    ["Доступ до LAN через вихід", "поки використовується вихідний вузол",   "--exit-node-allow-lan-access=true","--exit-node-allow-lan-access=false"],
+    ["Щит (блокувати вхідні)",   "shields-up: відхиляти вхідні з'єднання",  "--shields-up=true",                "--shields-up=false"],
+  ];
+  acts.forEach(([label, sub, on, off])=>{
+    th += `<div class="item"><div class="k"><b>${esc(label)}</b><small>${esc(sub)}</small></div>`
+        + `<button class="act ok" data-set="${on}">Увімк</button>`
+        + `<button class="act sec" data-set="${off}">Вимк</button></div>`;
+  });
+  document.getElementById("toggles").innerHTML = th;
+
+  document.querySelectorAll("[data-set]").forEach(b=>{
+    b.onclick = ()=>applySet(b, b.getAttribute("data-set"));
+  });
+}
+
+// Only flags this UI itself defines are ever passed to the shell.
+const ALLOWED_SET = /^--[a-z-]+=(true|false)$/;
+async function applySet(btn, flag){
+  if(!ALLOWED_SET.test(flag)){ toast("відхилено"); return; }
+  const old = btn.textContent; btn.disabled = true; btn.textContent = "…";
+  const {stdout, stderr, errno} = await sh(`${TS} set ${flag} 2>&1`);
+  setOut("mout", (stdout+"\n"+stderr).trim() || (errno===0 ? "готово: "+flag : "помилка"));
+  toast(errno===0 ? "застосовано" : "помилка");
+  btn.disabled = false; btn.textContent = old;
+  await loadStatus(); await loadNetwork();
+}
+
+function isTailnetAddr(s){
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || /^[0-9a-fA-F:]{2,45}$/.test(s);
+}
+
+document.getElementById("exitapply").onclick = async (e)=>{
+  const ip = document.getElementById("exitsel").value;
+  if(ip && !isTailnetAddr(ip)){ toast("недопустима адреса"); return; }
+  const b = e.currentTarget; b.disabled = true;
+  const {stdout, stderr, errno} = await sh(`${TS} set --exit-node=${ip} 2>&1`);
+  setOut("mout", (stdout+"\n"+stderr).trim() || (errno===0 ? (ip?"вихідний вузол: "+ip:"вихідний вузол вимкнено") : "помилка"));
+  toast(errno===0 ? "застосовано" : "помилка");
+  b.disabled = false;
+  await loadStatus(); await loadNetwork();
+};
+
+document.getElementById("hostapply").onclick = async (e)=>{
+  const v = document.getElementById("hostname").value.trim();
+  if(!/^[a-zA-Z0-9-]{1,63}$/.test(v)){ toast("лише латиниця, цифри й дефіс"); return; }
+  const b = e.currentTarget; b.disabled = true;
+  const {stdout, stderr, errno} = await sh(`${TS} set --hostname=${v} 2>&1`);
+  setOut("mout", (stdout+"\n"+stderr).trim() || (errno===0 ? "ім'я змінено на "+v : "помилка"));
+  toast(errno===0 ? "застосовано" : "помилка");
+  b.disabled = false;
+  await loadStatus();
+};
+
+document.getElementById("routesapply").onclick = async (e)=>{
+  const v = document.getElementById("routes").value.trim();
+  if(v && !/^[0-9a-fA-F:.\/,]+$/.test(v)){ toast("недопустимий список маршрутів"); return; }
+  const b = e.currentTarget; b.disabled = true;
+  const {stdout, stderr, errno} = await sh(`${TS} set --advertise-routes=${v} 2>&1`);
+  setOut("mout", (stdout+"\n"+stderr).trim() || (errno===0 ? (v?"анонсовано: "+v:"маршрути прибрано") : "помилка"));
+  toast(errno===0 ? "застосовано" : "помилка");
+  b.disabled = false;
+};
+
+/* ---------------- ЖУРНАЛ ---------------- */
 async function loadLogs(){
   const {stdout} = await sh(`echo @@M@@; tail -n 60 ${MLOG} 2>/dev/null; echo @@D@@; tail -n 40 ${STATE}/daemon.log 2>/dev/null`);
-  let sec="", m="", d="";
-  stdout.split("\n").forEach(l=>{
-    if(l==="@@M@@"||l==="@@D@@"){ sec=l; return; }
-    if(sec==="@@M@@") m += l+"\n"; else if(sec==="@@D@@") d += l+"\n";
-  });
+  const m = section(stdout, "@@M@@", "@@D@@").trim();
+  const d = section(stdout, "@@D@@").trim();
   const me=document.getElementById("mlog"), de=document.getElementById("dlog");
-  me.textContent = m.trim() || "(порожньо — модуль ще не запускався)";
-  de.textContent = d.trim() || "(порожньо)";
+  me.textContent = m || "(порожньо — модуль ще не запускався)";
+  de.textContent = d || "(порожньо)";
   me.scrollTop = me.scrollHeight; de.scrollTop = de.scrollHeight;
-  document.getElementById("logmeta").textContent = m.trim() ? "· останні "+m.trim().split("\n").length+" рядків" : "";
+  document.getElementById("logmeta").textContent = m ? "· останні "+m.split("\n").length+" рядків" : "";
 }
 
 function copyTxt(t){ navigator.clipboard?.writeText(t).then(()=>toast("скопійовано"),()=>toast("не вдалося скопіювати")); }
@@ -304,12 +467,12 @@ async function refreshStatus(){
 /* ---------------- ДІЇ ---------------- */
 // Buttons that change network state lock while they run: a double tap must not
 // leave the daemon half-way between up and down.
-async function act(btn, label, cmd, okMsg){
+async function act(btn, label, cmd, okMsg, outId){
   const old = btn.textContent;
   btn.disabled = true; btn.textContent = label;
-  setOut("виконується: "+cmd);
+  setOut(outId||"out", "виконується: "+cmd);
   const {errno, stdout, stderr} = await sh(cmd);
-  setOut((stdout||"").trim() + ((stderr||"").trim() ? "\n"+stderr.trim() : "") || (errno===0?"готово":"помилка"));
+  setOut(outId||"out", ((stdout||"").trim() + ((stderr||"").trim() ? "\n"+stderr.trim() : "")) || (errno===0?"готово":"помилка"));
   toast(errno===0 ? okMsg : "помилка");
   btn.disabled = false; btn.textContent = old;
   await loadStatus();
@@ -317,30 +480,27 @@ async function act(btn, label, cmd, okMsg){
 
 document.getElementById("up").onclick = (e)=>act(e.currentTarget, "▲ …",
   `${TS} up --ssh --accept-dns=false --accept-routes=false 2>&1`, "підключено");
-
 document.getElementById("down").onclick = (e)=>act(e.currentTarget, "▼ …",
   `${TS} down 2>&1`, "від'єднано");
-
 // Stop then start: service.sh kills the supervisor first, otherwise it would
-// simply restart the daemon a second later and look like nothing happened.
+// restart the daemon a second later and look like nothing happened.
 document.getElementById("restart").onclick = (e)=>act(e.currentTarget, "↺ …",
   `sh ${MOD}/service.sh stop; sh ${MOD}/service.sh; sleep 3; ${TS} status 2>&1 | head -3`, "перезапущено");
-
-// The address goes into a command that runs as root, and it arrives from
-// status --json — i.e. from other devices in the tailnet, not from us. It is
-// checked against an address shape before use, and passed after `--` so it can
-// never be read as a flag.
-function isTailnetAddr(s){
-  return /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || /^[0-9a-fA-F:]{2,45}$/.test(s);
-}
 document.getElementById("ping").onclick = async (e)=>{
   const ip = document.getElementById("peersel").value;
   if(!ip){ toast("оберіть вузол"); return; }
-  if(!isTailnetAddr(ip)){ toast("недопустима адреса"); setOut("відхилено: "+ip); return; }
+  // The address runs in a command executed as root and comes from status --json,
+  // i.e. from other devices. Checked, then passed after `--` so it can never be
+  // read as a flag.
+  if(!isTailnetAddr(ip)){ toast("недопустима адреса"); setOut("out", "відхилено: "+ip); return; }
   await act(e.currentTarget, "…", `${TS} ping -c 3 -- ${ip} 2>&1`, "готово");
 };
+document.getElementById("netcheck").onclick = (e)=>act(e.currentTarget, "…", `${TS} netcheck 2>&1`, "готово");
+document.getElementById("dnsstatus").onclick = (e)=>act(e.currentTarget, "…", `${TS} dns status 2>&1`, "готово");
+document.getElementById("servestatus").onclick = (e)=>act(e.currentTarget, "…", `${TS} serve status 2>&1`, "готово");
 
 document.getElementById("refresh").onclick = refreshStatus;
+document.getElementById("mrefresh").onclick = loadNetwork;
 document.getElementById("lrefresh").onclick = loadLogs;
 
 /* ---------------- init ---------------- */
