@@ -34,7 +34,11 @@ set_arch() {
 }
 
 get_build_tags() {
-    local remove="aws,bird,tap,kube,completion,completion_scripts,wakeonlan,capture,systray,syspolicy,appconnectors,identityfederation,usermetrics,logtail,netlog,linuxdnsfight,syspolicy,tpm"
+    # clientupdate is removed on purpose: with it the binary carries a
+    # `tailscale update` that downloads tailscaled from a third-party GitHub
+    # repo with no signature check and installs it 0777 (see VAU-AUDIT.md, C1).
+    # Updates come from reinstalling the KSU module, nothing else.
+    local remove="aws,bird,tap,kube,completion,completion_scripts,wakeonlan,capture,systray,syspolicy,appconnectors,identityfederation,usermetrics,logtail,netlog,linuxdnsfight,tpm,clientupdate"
     GOOS= GOARCH= ./tool/go run ./cmd/featuretags --remove "$remove" --add "cli"
 }
 
