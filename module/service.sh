@@ -43,6 +43,7 @@ SOCK="$STATE/tailscaled.sock"
 DLOG="$STATE/daemon.log"
 PIDFILE="$STATE/tailscaled.pid"
 SUPFILE="$STATE/supervisor.pid"
+HLTFILE="$STATE/health.pid"
 
 log() { echo "[$(date '+%m-%d %H:%M:%S')] $*" >> "$LOG"; }
 
@@ -128,7 +129,10 @@ supervise() {
 }
 
 stop_all() {
-    for f in "$SUPFILE" "$PIDFILE"; do
+    # Supervisor first, then the health loop, then the daemon: kill the daemon
+    # while the supervisor is still up and it is restarted a second later,
+    # which looks exactly like a stop that did not work.
+    for f in "$SUPFILE" "$HLTFILE" "$PIDFILE"; do
         [ -f "$f" ] || continue
         pid=$(cat "$f" 2>/dev/null)
         [ -n "$pid" ] && kill "$pid" 2>/dev/null
@@ -168,3 +172,4 @@ log "=== boot: starting supervisor (tun=$(tun_flag)) ==="
 supervise &
 echo $! > "$SUPFILE"
 health_loop &
+echo $! > "$HLTFILE"
