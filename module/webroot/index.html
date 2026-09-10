@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vau Tailscale</title>
+<style>
+  :root{
+    --bg:#0d0b14; --card:#171326; --card2:#1f1a30; --line:#2a2440;
+    --txt:#e8e4f5; --dim:#9a92b8; --accent:#a874ff; --ok:#3ddc84;
+    --bad:#ff5c72; --warn:#ffb454;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.45 -apple-system,Roboto,"Segoe UI",sans-serif;
+    padding:max(14px,env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom))}
+  header{display:flex;align-items:center;gap:10px;margin:4px 0 14px}
+  header .logo{font-size:24px}
+  header h1{font-size:19px;margin:0;font-weight:600;letter-spacing:.2px}
+  header .ver{margin-left:auto;color:var(--dim);font-size:12px}
+  .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:4px;margin-bottom:14px}
+  .tabs button{flex:1;border:0;background:transparent;color:var(--dim);
+    font-size:14px;font-weight:600;padding:9px;border-radius:9px;
+    -webkit-tap-highlight-color:transparent}
+  .tabs button.active{background:var(--accent);color:#fff}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  button{border:0;border-radius:12px;padding:12px 14px;font-size:14px;
+    font-weight:600;color:#fff;background:var(--accent);
+    -webkit-tap-highlight-color:transparent}
+  .row>button{flex:1;min-width:130px}
+  button.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+  button.ok{background:var(--ok);color:#06210f}
+  button.bad{background:var(--bad);color:#2a0710}
+  button:active{filter:brightness(.85)}
+  button:disabled{opacity:.5}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:4px 14px;margin-bottom:14px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--dim);margin:14px 2px 8px}
+  .item{display:flex;align-items:center;gap:10px;padding:9px 2px;
+    border-top:1px solid var(--line)}
+  .item:first-of-type{border-top:0}
+  .item .k{flex:1;min-width:0}
+  .item .k b{font-weight:500}
+  .item .k small{display:block;color:var(--dim);font-size:11px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip{font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .chip.ok{background:rgba(61,220,132,.14);color:var(--ok)}
+  .chip.bad{background:rgba(255,92,114,.14);color:var(--bad)}
+  .chip.warn{background:rgba(255,180,84,.14);color:var(--warn)}
+  .chip.dim{background:rgba(154,146,184,.14);color:var(--dim)}
+  .item button.act{flex:0 0 auto;min-width:88px;padding:8px 10px;font-size:13px}
+  .val{font-variant-numeric:tabular-nums;color:var(--dim);font-size:13px}
+  pre{background:#0a0812;border:1px solid var(--line);border-radius:12px;
+    padding:12px;margin:0 0 4px;overflow:auto;max-height:38vh;
+    font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#cfc8ea}
+  .copyline{display:flex;align-items:center;gap:8px;padding:10px 2px}
+  .copyline code{flex:1;background:#0a0812;border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;font:12px ui-monospace,monospace;color:var(--accent);
+    overflow:auto;white-space:nowrap}
+  .copyline button{flex:0 0 auto;min-width:0;padding:8px 12px}
+  .muted{color:var(--dim);font-size:12px;text-align:center;padding:6px}
+  select{background:var(--card2);color:var(--txt);border:1px solid var(--line);
+    border-radius:10px;padding:10px;font-size:14px;flex:1;min-width:130px}
+  [hidden]{display:none}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">🔗</span>
+  <h1>Vau Tailscale</h1>
+  <span class="ver" id="ver"></span>
+</header>
+
+<div class="tabs">
+  <button id="t-stan" class="active" onclick="showTab('stan')">Стан</button>
+  <button id="t-dii" onclick="showTab('dii')">Дії</button>
+  <button id="t-log" onclick="showTab('log')">Журнал</button>
+</div>
+
+<!-- ===================== СТАН ===================== -->
+<section id="tab-stan">
+  <div class="row">
+    <button id="refresh" class="sec">↻ Оновити</button>
+  </div>
+  <div class="card" id="node"><h2>Вузол</h2><div class="muted">завантаження…</div></div>
+  <div class="card" id="peers"><h2>Вузли мережі</h2><div class="muted">завантаження…</div></div>
+</section>
+
+<!-- ===================== ДІЇ ====================== -->
+<section id="tab-dii" hidden>
+  <div class="row">
+    <button id="up" class="ok">▲ Підключити</button>
+    <button id="down" class="bad">▼ Від'єднати</button>
+  </div>
+  <div class="row">
+    <button id="restart" class="sec">↺ Перезапустити демон</button>
+  </div>
+  <div class="card" id="pingcard">
+    <h2>Перевірка зв'язку</h2>
+    <div class="row" style="margin:10px 0">
+      <select id="peersel"><option value="">— вузол —</option></select>
+      <button id="ping" class="sec" style="flex:0 0 auto">Ping</button>
+    </div>
+  </div>
+  <div class="card"><h2>Вивід команди</h2><pre id="out">—</pre></div>
+  <div class="muted">Підключення виконується з прапорцями <code>--ssh --accept-dns=false</code>:
+    перехоплення DNS вимкнено навмисно, див. docs/vau/AUDIT.md (C2, C3).</div>
+</section>
+
+<!-- ===================== ЖУРНАЛ =================== -->
+<section id="tab-log" hidden>
+  <div class="row">
+    <button id="lrefresh" class="sec">↻ Оновити</button>
+  </div>
+  <div class="card">
+    <h2>Журнал модуля <span class="val" id="logmeta"></span></h2>
+    <pre id="mlog">завантаження…</pre>
+  </div>
+  <div class="card">
+    <h2>Журнал демона</h2>
+    <pre id="dlog">завантаження…</pre>
+  </div>
+</section>
+
+<div class="muted" id="foot"></div>
+
+<script>
+const MOD   = "/data/adb/modules/vau_tailscale";
+const STATE = "/data/adb/tailscale";
+const CONF  = "/data/adb/vau-tailscale.conf";
+const MLOG  = "/data/local/tmp/vau_tailscale.log";
+const TS    = STATE + "/tailscale --socket=" + STATE + "/tailscaled.sock";
+
+// KernelSU WebUI bridge → Promise wrapper around ksu.exec(cmd, opts, cbName).
+function sh(cmd){
+  return new Promise((resolve)=>{
+    if(typeof ksu === "undefined" || !ksu.exec){
+      resolve({errno:-1, stdout:"", stderr:"немає мосту ksu (відкрий через KernelSU Manager → Web UI)"});
+      return;
+    }
+    const cb = "cb_"+Math.random().toString(36).slice(2);
+    window[cb] = (errno, stdout, stderr)=>{ delete window[cb]; resolve({errno, stdout, stderr}); };
+    try{ ksu.exec(cmd, "{}", cb); }
+    catch(e){ delete window[cb]; resolve({errno:-1, stdout:"", stderr:String(e)}); }
+  });
+}
+function toast(m){ try{ ksu.toast(m); }catch(e){} }
+function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function chip(cls, text){ return `<span class="chip ${cls}">${esc(text)}</span>`; }
+function row(label, sub, cls, text){
+  return `<div class="item"><div class="k"><b>${esc(label)}</b><small>${esc(sub)}</small></div>`
+       + (cls ? chip(cls, text) : "") + `</div>`;
+}
+function showTab(name){
+  ["stan","dii","log"].forEach(t=>{
+    document.getElementById("tab-"+t).hidden = (t!==name);
+    document.getElementById("t-"+t).classList.toggle("active", t===name);
+  });
+  if(name==="log") loadLogs();
+}
+function setOut(txt){ document.getElementById("out").textContent = txt || "—"; }
+
+/* ---------------- СТАН ---------------- */
+const STATE_UA = {
+  Running:          ["ok",   "працює"],
+  Starting:         ["warn", "запускається"],
+  NeedsLogin:       ["warn", "потрібен вхід"],
+  NeedsMachineAuth: ["warn", "очікує підтвердження"],
+  Stopped:          ["bad",  "зупинено"],
+  NoState:          ["bad",  "немає стану"],
+};
+
+let PEERS = [];
+
+function daysLeft(iso){
+  if(!iso || iso.startsWith("0001-01-01")) return null;   // expiry disabled
+  return Math.round((new Date(iso) - Date.now()) / 86400000);
+}
+
+async function loadStatus(){
+  const cmd =
+    `echo @@JSON@@; ${TS} status --json 2>&1;` +
+    `echo @@MODE@@; (grep -m1 '^TUN_MODE=' ${CONF} 2>/dev/null || echo TUN_MODE=userspace);` +
+    `echo @@PIDS@@; for f in supervisor.pid health.pid tailscaled.pid; do ` +
+    `p=$(cat ${STATE}/$f 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then echo "$f=$p"; else echo "$f=-"; fi; done`;
+
+  const {stdout, stderr, errno} = await sh(cmd);
+  const card = document.getElementById("node");
+  if(errno !== 0 && !stdout){
+    card.innerHTML = '<h2>Вузол</h2><div class="muted">'+esc(stderr||"помилка виконання")+'</div>';
+    return;
+  }
+
+  let sec="", jsonTxt="", mode="userspace", pids={};
+  stdout.split("\n").forEach(l=>{
+    if(l==="@@JSON@@"||l==="@@MODE@@"||l==="@@PIDS@@"){ sec=l; return; }
+    if(sec==="@@JSON@@") jsonTxt += l+"\n";
+    else if(sec==="@@MODE@@" && l.startsWith("TUN_MODE=")) mode = l.slice(9).trim() || "userspace";
+    else if(sec==="@@PIDS@@"){ const i=l.indexOf("="); if(i>0) pids[l.slice(0,i)]=l.slice(i+1); }
+  });
+
+  let st=null;
+  try{ st = JSON.parse(jsonTxt); }catch(e){ st = null; }
+
+  let h = "<h2>Вузол</h2>";
+  if(!st){
+    h += row("Демон", "сокет не відповідає — демон не запущено або він завис", "bad", "недоступний");
+    h += row("Наглядач", "supervisor.pid = "+(pids["supervisor.pid"]||"-"),
+             pids["supervisor.pid"]!=="-"?"ok":"bad", pids["supervisor.pid"]!=="-"?"живий":"немає");
+    card.innerHTML = h;
+    document.getElementById("peers").innerHTML = '<h2>Вузли мережі</h2><div class="muted">немає даних</div>';
+    return;
+  }
+
+  const bs = st.BackendState || "?";
+  const [bcls, btxt] = STATE_UA[bs] || ["dim", bs];
+  h += row("Демон", "BackendState = "+bs, bcls, btxt);
+
+  const self = st.Self || {};
+  h += row("Ім'я вузла", (self.OS||"android")+" · "+(self.DNSName||"").replace(/\.$/,""), null, "");
+  h += row("Адреси", (self.TailscaleIPs||[]).join("  ·  ") || "немає", null, "");
+
+  const dl = daysLeft(self.KeyExpiry);
+  if(dl === null){
+    h += row("Термін ключа", "вимкнено в адмінці — вузол не відпаде сам", "ok", "безстроковий");
+  }else{
+    const cls = dl < 0 ? "bad" : (dl < 30 ? "warn" : "ok");
+    const txt = dl < 0 ? "прострочений" : dl+" дн.";
+    h += row("Термін ключа", (self.KeyExpiry||"").slice(0,10)+" — після цієї дати вузол зникне з мережі", cls, txt);
+  }
+
+  const modeOk = mode === "userspace";
+  h += row("Режим мережі", modeOk
+      ? "userspace — без tailscale0, без ip rule, без iptables"
+      : "kernel TUN — маршрути й iptables змінюються, потрібні фікси DNS з аудиту",
+    modeOk ? "ok" : "warn", mode);
+
+  h += row("Процеси", `наглядач ${pids["supervisor.pid"]||"-"} · здоров'я ${pids["health.pid"]||"-"} · демон ${pids["tailscaled.pid"]||"-"}`,
+           pids["tailscaled.pid"]!=="-" ? "ok" : "bad",
+           pids["tailscaled.pid"]!=="-" ? "у роботі" : "немає");
+
+  if(st.AuthURL){
+    h += `<div class="copyline"><code>${esc(st.AuthURL)}</code>`
+       + `<button class="sec" onclick="copyTxt('${esc(st.AuthURL)}')">копіювати</button></div>`;
+    h += '<div class="muted">Відкрий це посилання, щоб авторизувати вузол.</div>';
+  }
+  card.innerHTML = h;
+
+  // ---- peers ----
+  PEERS = Object.values(st.Peer || {}).map(p=>({
+    name: (p.HostName||"?"),
+    ip:   (p.TailscaleIPs||[])[0] || "",
+    online: !!p.Online,
+    direct: !!p.CurAddr,
+    relay: p.Relay || "",
+    last: p.LastSeen || "",
+  })).sort((a,b)=> (b.online-a.online) || a.name.localeCompare(b.name));
+
+  let ph = `<h2>Вузли мережі · ${PEERS.filter(p=>p.online).length} у мережі з ${PEERS.length}</h2>`;
+  PEERS.forEach(p=>{
+    const sub = p.online
+      ? (p.ip + " · " + (p.direct ? "напряму" : ("через DERP "+(p.relay||"?"))))
+      : (p.ip + " · востаннє " + (p.last||"?").slice(0,10));
+    ph += row(p.name, sub, p.online?"ok":"dim", p.online?"у мережі":"офлайн");
+  });
+  document.getElementById("peers").innerHTML = ph;
+
+  const sel = document.getElementById("peersel");
+  sel.innerHTML = '<option value="">— вузол —</option>' +
+    PEERS.filter(p=>p.ip).map(p=>`<option value="${esc(p.ip)}">${esc(p.name)}</option>`).join("");
+}
+
+async function loadLogs(){
+  const {stdout} = await sh(`echo @@M@@; tail -n 60 ${MLOG} 2>/dev/null; echo @@D@@; tail -n 40 ${STATE}/daemon.log 2>/dev/null`);
+  let sec="", m="", d="";
+  stdout.split("\n").forEach(l=>{
+    if(l==="@@M@@"||l==="@@D@@"){ sec=l; return; }
+    if(sec==="@@M@@") m += l+"\n"; else if(sec==="@@D@@") d += l+"\n";
+  });
+  const me=document.getElementById("mlog"), de=document.getElementById("dlog");
+  me.textContent = m.trim() || "(порожньо — модуль ще не запускався)";
+  de.textContent = d.trim() || "(порожньо)";
+  me.scrollTop = me.scrollHeight; de.scrollTop = de.scrollHeight;
+  document.getElementById("logmeta").textContent = m.trim() ? "· останні "+m.trim().split("\n").length+" рядків" : "";
+}
+
+function copyTxt(t){ navigator.clipboard?.writeText(t).then(()=>toast("скопійовано"),()=>toast("не вдалося скопіювати")); }
+
+async function refreshStatus(){
+  const b=document.getElementById("refresh"); b.disabled=true; b.textContent="↻ …";
+  await loadStatus();
+  b.disabled=false; b.textContent="↻ Оновити";
+}
+
+/* ---------------- ДІЇ ---------------- */
+// Buttons that change network state lock while they run: a double tap must not
+// leave the daemon half-way between up and down.
+async function act(btn, label, cmd, okMsg){
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = label;
+  setOut("виконується: "+cmd);
+  const {errno, stdout, stderr} = await sh(cmd);
+  setOut((stdout||"").trim() + ((stderr||"").trim() ? "\n"+stderr.trim() : "") || (errno===0?"готово":"помилка"));
+  toast(errno===0 ? okMsg : "помилка");
+  btn.disabled = false; btn.textContent = old;
+  await loadStatus();
+}
+
+document.getElementById("up").onclick = (e)=>act(e.currentTarget, "▲ …",
+  `${TS} up --ssh --accept-dns=false --accept-routes=false 2>&1`, "підключено");
+
+document.getElementById("down").onclick = (e)=>act(e.currentTarget, "▼ …",
+  `${TS} down 2>&1`, "від'єднано");
+
+// Stop then start: service.sh kills the supervisor first, otherwise it would
+// simply restart the daemon a second later and look like nothing happened.
+document.getElementById("restart").onclick = (e)=>act(e.currentTarget, "↺ …",
+  `sh ${MOD}/service.sh stop; sh ${MOD}/service.sh; sleep 3; ${TS} status 2>&1 | head -3`, "перезапущено");
+
+document.getElementById("ping").onclick = async (e)=>{
+  const ip = document.getElementById("peersel").value;
+  if(!ip){ toast("оберіть вузол"); return; }
+  await act(e.currentTarget, "…", `${TS} ping -c 3 ${ip} 2>&1`, "готово");
+};
+
+document.getElementById("refresh").onclick = refreshStatus;
+document.getElementById("lrefresh").onclick = loadLogs;
+
+/* ---------------- init ---------------- */
+sh(`grep -m1 '^version=' ${MOD}/module.prop | cut -d= -f2-`).then(r=>{
+  document.getElementById("ver").textContent = (r.stdout||"").trim();
+});
+refreshStatus();
+</script>
+</body>
+</html>
