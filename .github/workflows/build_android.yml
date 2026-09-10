@@ -7,6 +7,11 @@ name: "vau-release"
 # root on a phone. The NDK and UPX actions are gone entirely — the build is
 # CGO-free (no NDK needed) and UPX only inflates RSS on a handset that already
 # hits LOW_MEMORY (see docs/vau/AUDIT.md, M10).
+#
+# arm64 only. Go's android/arm (32-bit) port cannot link without cgo —
+# "android/arm requires external (cgo) linking, but cgo is not enabled" — so a
+# 32-bit build would mean dragging the NDK back in for an architecture no
+# target device has (both handsets are aarch64).
 
 on:
   workflow_dispatch:
@@ -53,9 +58,6 @@ jobs:
       - name: Build arm64 (no cgo)
         run: ./scripts/android.sh build --nocgo arm64
 
-      - name: Build arm (no cgo)
-        run: ./scripts/android.sh build --nocgo arm
-
       - name: Package and checksum
         run: |
           set -euo pipefail
@@ -63,8 +65,7 @@ jobs:
           echo "VERSION_SHORT=$VERSION_SHORT" >> "$GITHUB_ENV"
           cd dist
           tar -czf "tailscale_${VERSION_SHORT}_arm64.tgz" --transform='s/tailscaled.arm64/tailscaled/' tailscaled.arm64
-          tar -czf "tailscale_${VERSION_SHORT}_arm.tgz"   --transform='s/tailscaled.arm/tailscaled/'   tailscaled.arm
-          sha256sum tailscale_*.tgz tailscaled.arm64 tailscaled.arm > SHA256SUMS
+          sha256sum tailscale_*.tgz tailscaled.arm64 > SHA256SUMS
           ls -lh
 
       - name: Sign artifacts
