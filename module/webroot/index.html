@@ -242,11 +242,18 @@ async function loadStatus(){
            pids["tailscaled.pid"]!=="-" ? "у роботі" : "немає");
 
   if(st.AuthURL){
-    h += `<div class="copyline"><code>${esc(st.AuthURL)}</code>`
-       + `<button class="sec" onclick="copyTxt('${esc(st.AuthURL)}')">копіювати</button></div>`;
+    // The URL is NOT interpolated into an onclick: esc() does not escape quotes,
+    // and everything in status --json is data from elsewhere in the tailnet.
+    // The listener is attached below, with the value held in a closure.
+    h += `<div class="copyline"><code id="authurl"></code>`
+       + `<button class="sec" id="authcopy">копіювати</button></div>`;
     h += '<div class="muted">Відкрий це посилання, щоб авторизувати вузол.</div>';
   }
   card.innerHTML = h;
+  if(st.AuthURL){
+    document.getElementById("authurl").textContent = st.AuthURL;
+    document.getElementById("authcopy").onclick = ()=>copyTxt(st.AuthURL);
+  }
 
   // ---- peers ----
   PEERS = Object.values(st.Peer || {}).map(p=>({
@@ -319,10 +326,18 @@ document.getElementById("down").onclick = (e)=>act(e.currentTarget, "▼ …",
 document.getElementById("restart").onclick = (e)=>act(e.currentTarget, "↺ …",
   `sh ${MOD}/service.sh stop; sh ${MOD}/service.sh; sleep 3; ${TS} status 2>&1 | head -3`, "перезапущено");
 
+// The address goes into a command that runs as root, and it arrives from
+// status --json — i.e. from other devices in the tailnet, not from us. It is
+// checked against an address shape before use, and passed after `--` so it can
+// never be read as a flag.
+function isTailnetAddr(s){
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || /^[0-9a-fA-F:]{2,45}$/.test(s);
+}
 document.getElementById("ping").onclick = async (e)=>{
   const ip = document.getElementById("peersel").value;
   if(!ip){ toast("оберіть вузол"); return; }
-  await act(e.currentTarget, "…", `${TS} ping -c 3 ${ip} 2>&1`, "готово");
+  if(!isTailnetAddr(ip)){ toast("недопустима адреса"); setOut("відхилено: "+ip); return; }
+  await act(e.currentTarget, "…", `${TS} ping -c 3 -- ${ip} 2>&1`, "готово");
 };
 
 document.getElementById("refresh").onclick = refreshStatus;
