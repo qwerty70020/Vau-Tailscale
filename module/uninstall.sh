@@ -15,7 +15,7 @@
 STATE=/data/adb/tailscale
 LOG=/data/local/tmp/vau_tailscale.log
 
-for f in "$STATE/supervisor.pid" "$STATE/tailscaled.pid"; do
+for f in "$STATE/supervisor.pid" "$STATE/health.pid" "$STATE/tailscaled.pid"; do
     [ -f "$f" ] || continue
     pid=$(cat "$f" 2>/dev/null)
     [ -n "$pid" ] && kill "$pid" 2>/dev/null
