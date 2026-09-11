@@ -110,8 +110,23 @@ install_update() {
         say "не вдалося отримати SHA256SUMS — зупиняюсь"; return 1
     fi
 
-    say "встановлюю через ksud…"
-    if /data/adb/ksud module install "$WORK/$ZIP_NAME" 2>&1 | tail -5; then
+    # The module runs on both root implementations and they install packages
+    # differently: KernelSU has ksud, Magisk has `magisk --install-module`.
+    # Checked on the second handset (OnePlus Nord, Magisk 30700) — there is no
+    # ksud there at all, so hardcoding it would have failed at the last step,
+    # after the download and the checksum had already succeeded.
+    if [ -x /data/adb/ksud ]; then
+        INSTALLER="/data/adb/ksud module install"
+    elif command -v magisk >/dev/null 2>&1; then
+        INSTALLER="magisk --install-module"
+    else
+        say "не знайдено ні ksud, ні magisk — встанови пакет вручну:"
+        say "$WORK/$ZIP_NAME"
+        return 1
+    fi
+
+    say "встановлюю ($INSTALLER)…"
+    if $INSTALLER "$WORK/$ZIP_NAME" 2>&1 | tail -5; then
         log "installed $NEW_VER"
         say "ГОТОВО: $NEW_VER встановлено, застосується після перезавантаження"
         rm -f "$WORK/$ZIP_NAME"
