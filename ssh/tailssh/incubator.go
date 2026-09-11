@@ -848,11 +848,21 @@ func (ss *sshSession) launchProcess() error {
 	cmd := ss.cmd
 	cmd.Env = envForUser(ss.conn.localUser)
 	if runtime.GOOS == "android" {
-		if home, exists := os.LookupEnv("HOME"); exists {
-			cmd.Dir = home
-		}
+		// Android has no login machinery to build an environment, so a couple
+		// of variables are carried over from the daemon. Carrying ALL of them,
+		// which is what this used to do, handed the session the daemon's own
+		// HOME, PATH, USER and SHELL: os/exec keeps the LAST duplicate, so the
+		// envForUser values above were silently overridden.
+		//
+		// Measured over real SSH before this change: a session as uid 2000 got
+		// HOME=/data/adb/tailscale — root's directory, mode 700 — and could not
+		// read it. The working directory was forced there too; dropping that
+		// leaves doDropPrivileges to chdir into the user's own home and fall
+		// back to "/" when there is none, which is what Android AIDs need.
 		for _, kv := range os.Environ() {
-			if !strings.HasPrefix(kv, "TS_") {
+			k, _, _ := strings.Cut(kv, "=")
+			switch k {
+			case "TMPDIR", "TZ", "LANG":
 				cmd.Env = append(cmd.Env, kv)
 			}
 		}
