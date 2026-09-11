@@ -108,6 +108,19 @@ func defaultPathForUser(u *user.User) string {
 	case distro.NixOS:
 		return defaultPathForUserOnNixOS(u)
 	}
+	if runtime.GOOS == "android" {
+		// Android has none of the Unix directories the defaults below name:
+		// measured on Android 16, only /bin exists and only as a symlink to
+		// /system/bin, while /usr/bin, /usr/local/bin and /sbin are absent.
+		// Sessions therefore worked by accident, through that one symlink.
+		//
+		// Every entry here was checked to exist on the device. /system/xbin and
+		// /sbin are left out precisely because they do not, and the root
+		// toolchain in /data/adb/ksu/bin is left out because a session's PATH
+		// is not the place for it — same reasoning as H5: what root executes
+		// should not be decided by a directory someone else can populate.
+		return "/system/bin:/system_ext/bin:/vendor/bin:/apex/com.android.art/bin:/apex/com.android.runtime/bin"
+	}
 	if isRoot {
 		return "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 	}
