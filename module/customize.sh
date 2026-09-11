@@ -17,6 +17,15 @@ mkdir -p "$STATE"
 chmod 700 "$STATE"
 
 if [ -f "$MODPATH/bin/tailscaled" ]; then
+  # Keep the outgoing binary as the fallback BEFORE overwriting it. An update
+  # that cannot start would otherwise leave the phone unreachable, and the way
+  # back in is exactly the thing that just broke; service.sh restores this file
+  # after repeated fast failures.
+  if [ -x "$STATE/tailscaled" ] && ! cmp -s "$STATE/tailscaled" "$MODPATH/bin/tailscaled"; then
+    cp -f "$STATE/tailscaled" "$STATE/tailscaled.prev" 2>/dev/null \
+      && ui_print "- попередній бінарник збережено для відкату"
+  fi
+
   # Replace the binary only. tailscaled.state stays untouched, so the node
   # keeps its identity, its address and its place in the tailnet policy —
   # an update must not look like a new machine.
