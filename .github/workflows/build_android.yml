@@ -132,6 +132,24 @@ jobs:
             minisign -Vm "${sig%.minisig}" -P "$PUB"
           done
 
+      - name: Drop module zips left by earlier builds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-vau', env.VERSION_SHORT) }}
+        run: |
+          set -euo pipefail
+          # The release tag is reused and the upload action only ADDS files, so
+          # a previous build's zip stays attached — no longer covered by the
+          # current SHA256SUMS, yet still installable by anyone who scrolls the
+          # asset list. Remove every module zip that is not the one just built.
+          if gh release view "$TAG" --json assets --jq '.assets[].name' > /tmp/assets.txt 2>/dev/null; then
+            grep '^vau-tailscale-.*\.zip$' /tmp/assets.txt | grep -v -x -F "$ZIP" \
+              | while read -r a; do
+                  echo "removing stale asset: $a"
+                  gh release delete-asset "$TAG" "$a" -y || true
+                done
+          fi
+
       - name: Create release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
