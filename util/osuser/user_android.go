@@ -66,7 +66,7 @@ func androidLookup(usernameOrUID string, wantShell bool) (*user.User, string, er
 		Gid:      gid,
 		Username: username,
 		Name:     "Android",
-		HomeDir:  androidHomeDir(uid),
+		HomeDir:  androidHomeDir(ctx, uid),
 	}, shell, nil
 }
 
@@ -85,15 +85,64 @@ func idField(ctx context.Context, flag, usernameOrUID string) (string, error) {
 	return v, nil
 }
 
-// androidHomeDir returns a home directory for uid. Android has no per-user home
-// directories for AIDs, so anyone other than the calling process gets "/".
-// Handing the daemon's own HOME to every session is how an SSH login as an app
-// uid ended up pointed at root's directory.
-func androidHomeDir(uid string) string {
+// androidHomeDir returns a home directory for uid.
+//
+// An app uid gets its own app's home, which is what makes a single SSH entry
+// point possible: logging in as the terminal app's uid lands in the same place
+// its own shell would. Android has no per-user home directories for plain AIDs,
+// so everyone else gets "/" — anything else means handing out a directory the
+// session cannot read, which is what the daemon's own HOME used to do.
+func androidHomeDir(ctx context.Context, uid string) string {
+	if dir := appDataDirForUID(ctx, uid); dir != "" {
+		if h := dir + "/files/home"; isDir(h) {
+			return h
+		}
+	}
 	if n, err := strconv.Atoi(uid); err == nil && n == os.Getuid() {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
 			return strings.TrimSpace(home)
 		}
 	}
 	return "/"
+}
+
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
+// appDataDirForUID returns /data/data/<pkg> for an Android app uid, or "".
+//
+// The package manager is asked rather than the filesystem guessed: app uids are
+// assigned at install time and differ between handsets, so nothing may be
+// hardcoded. Before the owner's first unlock the directory name itself is
+// encrypted and this returns "" — a miss is normal here, not an error, and the
+// caller falls back to "/".
+func appDataDirForUID(ctx context.Context, uid string) string {
+	if n, err := strconv.Atoi(uid); err != nil || n < 10000 {
+		return "" // not an app uid; system AIDs have no data dir
+	}
+	out, err := exec.CommandContext(ctx, "/system/bin/pm", "list", "packages", "-U").Output()
+	if err != nil {
+		return ""
+	}
+	want := "uid:" + uid
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasSuffix(line, want) {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		pkg := strings.TrimPrefix(f[0], "package:")
+		if pkg == "" {
+			continue
+		}
+		if dir := "/data/data/" + pkg; isDir(dir) {
+			return dir
+		}
+	}
+	return ""
 }

@@ -119,7 +119,21 @@ func defaultPathForUser(u *user.User) string {
 		// toolchain in /data/adb/ksu/bin is left out because a session's PATH
 		// is not the place for it — same reasoning as H5: what root executes
 		// should not be decided by a directory someone else can populate.
-		return "/system/bin:/system_ext/bin:/vendor/bin:/apex/com.android.art/bin:/apex/com.android.runtime/bin"
+		sys := "/system/bin:/system_ext/bin:/vendor/bin:/apex/com.android.art/bin:/apex/com.android.runtime/bin"
+		// An app's own bin directory goes first when the session belongs to that
+		// app: a login as the terminal app's uid should find the tools that app
+		// installed, exactly as its own shell does. The directory is derived from
+		// the home the lookup already resolved, so the package manager is not
+		// asked twice. It is prepended only for THAT uid's session — never for
+		// root, whose PATH must not contain anything a non-root uid can write.
+		if strings.HasPrefix(u.HomeDir, "/data/data/") && !isRoot {
+			if root, ok := strings.CutSuffix(u.HomeDir, "/files/home"); ok {
+				if bin := root + "/files/usr/bin"; dirExists(bin) {
+					return bin + ":" + sys
+				}
+			}
+		}
+		return sys
 	}
 	if isRoot {
 		return "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -163,4 +177,9 @@ func expandDefaultPathTmpl(t string, u *user.User) string {
 		return ""
 	}
 	return p
+}
+
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }
