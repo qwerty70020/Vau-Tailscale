@@ -396,10 +396,39 @@ async function loadNetwork(){
   });
 }
 
+// Two of these switches cut the very path this module exists to provide:
+// shields-up blocks incoming connections and --ssh=false stops Tailscale SSH,
+// so one stray tap locks the owner out until the phone is in hand again.
+// A WebView dialog is not relied on (the host need not implement onJsConfirm,
+// and a dialog that never appears turns the button into a dead one): the first
+// tap arms the button, a second tap within 4 seconds acts.
+const DANGEROUS = ["--shields-up=true", "--ssh=false"];
+function armed(btn){
+  if(btn.dataset.armed === "1"){
+    delete btn.dataset.armed;
+    if(btn.dataset.label) btn.textContent = btn.dataset.label;  // restore before the action relabels it
+    return true;
+  }
+  btn.dataset.label = btn.textContent;
+  btn.dataset.armed = "1";
+  btn.textContent = "Точно?";
+  setTimeout(()=>{
+    if(btn.dataset.armed === "1"){
+      delete btn.dataset.armed;
+      btn.textContent = btn.dataset.label || btn.textContent;
+    }
+  }, 4000);
+  return false;
+}
+
 // Only flags this UI itself defines are ever passed to the shell.
 const ALLOWED_SET = /^--[a-z-]+=(true|false)$/;
 async function applySet(btn, flag){
   if(!ALLOWED_SET.test(flag)){ toast("відхилено"); return; }
+  if(DANGEROUS.includes(flag) && !armed(btn)){
+    toast("це відріже доступ до телефона — натисни ще раз");
+    return;
+  }
   const old = btn.textContent; btn.disabled = true; btn.textContent = "…";
   const {stdout, stderr, errno} = await sh(`${TS} set ${flag} 2>&1`);
   setOut("mout", (stdout+"\n"+stderr).trim() || (errno===0 ? "готово: "+flag : "помилка"));
@@ -480,8 +509,12 @@ async function act(btn, label, cmd, okMsg, outId){
 
 document.getElementById("up").onclick = (e)=>act(e.currentTarget, "▲ …",
   `${TS} up --ssh --accept-dns=false --accept-routes=false 2>&1`, "підключено");
-document.getElementById("down").onclick = (e)=>act(e.currentTarget, "▼ …",
-  `${TS} down 2>&1`, "від'єднано");
+// `down` disconnects the node — the same lockout as shields-up, so the same
+// arming: one tap warns, the second within 4 seconds actually disconnects.
+document.getElementById("down").onclick = (e)=>{
+  if(!armed(e.currentTarget)){ toast("це відріже доступ до телефона — натисни ще раз"); return; }
+  return act(e.currentTarget, "▼ …", `${TS} down 2>&1`, "від'єднано");
+};
 // Stop then start: service.sh kills the supervisor first, otherwise it would
 // restart the daemon a second later and look like nothing happened.
 document.getElementById("restart").onclick = (e)=>act(e.currentTarget, "↺ …",
