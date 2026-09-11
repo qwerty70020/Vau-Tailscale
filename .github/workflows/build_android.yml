@@ -58,17 +58,57 @@ jobs:
       - name: Build arm64 (no cgo)
         run: ./scripts/android.sh build --nocgo arm64
 
-      - name: Package and checksum
+      - name: Package binary, KSU module and checksums
         run: |
           set -euo pipefail
           eval "$(./build_dist.sh shellvars)"
+          VAU_N=$(git rev-list --count HEAD)
+          MOD_VERSION="v${VERSION_SHORT}-vau${VAU_N}"
+          TAG="v${VERSION_SHORT}-vau"
           echo "VERSION_SHORT=$VERSION_SHORT" >> "$GITHUB_ENV"
+          echo "MOD_VERSION=$MOD_VERSION" >> "$GITHUB_ENV"
+
           cd dist
           tar -czf "tailscale_${VERSION_SHORT}_arm64.tgz" --transform='s/tailscaled.arm64/tailscaled/' tailscaled.arm64
-          # Only what actually ships: a SHA256SUMS naming the bare tailscaled.arm64
-          # makes `sha256sum -c` fail for everyone who downloads the release,
-          # because that file is not a release asset.
-          sha256sum tailscale_*.tgz > SHA256SUMS
+          cd ..
+
+          # The KSU module ships the binary inside the zip, so a fresh install
+          # works offline and an update is one file to fetch and verify. The
+          # installer moves it into /data/adb/tailscale and drops it from the
+          # module directory, so the device keeps a single copy.
+          rm -rf dist/module
+          mkdir -p dist/module/bin
+          cp module/module.prop module/service.sh module/uninstall.sh \
+             module/action.sh module/customize.sh module/update.sh \
+             module/skip_mount dist/module/
+          cp -r module/webroot dist/module/
+          cp dist/tailscaled.arm64 dist/module/bin/tailscaled
+          # versionCode must only ever grow; the commit count does that without
+          # a file anyone has to remember to bump.
+          sed -i "s/^version=.*/version=${MOD_VERSION}/" dist/module/module.prop
+          sed -i "s/^versionCode=.*/versionCode=${VAU_N}/" dist/module/module.prop
+          ZIP="vau-tailscale-${MOD_VERSION}.zip"
+          (cd dist/module && zip -qX -r "../${ZIP}" .)
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+          printf '%s\n' \
+            '{' \
+            "  \"version\": \"${MOD_VERSION}\"," \
+            "  \"versionCode\": ${VAU_N}," \
+            "  \"zipUrl\": \"https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP}\"," \
+            "  \"changelog\": \"https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/CHANGELOG.txt\"" \
+            '}' > dist/update.json
+
+          printf '%s\n' "Vau Tailscale ${MOD_VERSION}" \
+            "tailscale commit: ${GITHUB_SHA}" \
+            "build: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/CHANGELOG.txt
+
+          # Checksums cover everything that ships and are produced BEFORE
+          # signing, so the signature covers the same set. A SHA256SUMS naming
+          # files that are not release assets makes `sha256sum -c` fail for
+          # everyone who downloads it.
+          cd dist
+          sha256sum tailscale_*.tgz "$ZIP" update.json CHANGELOG.txt > SHA256SUMS
           ls -lh
 
       - name: Sign artifacts
@@ -95,5 +135,8 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.tgz
+            dist/*.zip
+            dist/update.json
+            dist/CHANGELOG.txt
             dist/*.minisig
             dist/SHA256SUMS
