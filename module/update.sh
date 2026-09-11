@@ -21,7 +21,11 @@ STATE=/data/adb/tailscale
 MODDIR=${0%/*}
 LOG=/data/local/tmp/vau_tailscale.log
 WORK=/data/local/tmp/vau_update
-CURL="/system/bin/curl -sS --max-time 60 --retry 2"
+# -L is not optional: every releases/latest/download/... URL is a 302, and
+# without it curl writes a zero-byte file and every field parses as empty —
+# which looks exactly like "no update available". Measured: 302/0 bytes
+# without it, 200/292 bytes with it.
+CURL="/system/bin/curl -sSL --max-time 60 --retry 2"
 
 log() { echo "[$(date '+%m-%d %H:%M:%S')] update: $*" >> "$LOG"; }
 say() { echo "$*"; }
@@ -47,6 +51,9 @@ check() {
         "https://github.com/$REPO/releases/latest/download/update.json"; then
         say "не вдалося отримати update.json — немає мережі?"
         return 1
+    fi
+    if [ ! -s "$WORK/update.json" ]; then
+        say "update.json порожній — перевір мережу"; return 1
     fi
     NEW_VER=$(json_field "$WORK/update.json" version)
     NEW_CODE=$(json_field "$WORK/update.json" versionCode)
@@ -77,7 +84,7 @@ install_update() {
 
     ZIP_NAME=$(basename "$NEW_URL")
     say "завантажую $ZIP_NAME…"
-    if ! $CURL -L -o "$WORK/$ZIP_NAME" "$NEW_URL"; then
+    if ! $CURL -o "$WORK/$ZIP_NAME" "$NEW_URL"; then
         say "завантаження не вдалося"; log "download failed: $NEW_URL"; return 1
     fi
 
@@ -86,7 +93,7 @@ install_update() {
     # who built the file — that is what the minisign signature in the release is
     # for, and verifying it needs a verifier this phone does not carry outside
     # the terminal app. Checked on a desktop before trusting a new key.
-    if $CURL -L -o "$WORK/SHA256SUMS" \
+    if $CURL -o "$WORK/SHA256SUMS" \
         "https://github.com/$REPO/releases/latest/download/SHA256SUMS"; then
         WANT=$(grep " $ZIP_NAME\$" "$WORK/SHA256SUMS" | cut -d' ' -f1)
         GOT=$(sha256sum "$WORK/$ZIP_NAME" | cut -d' ' -f1)
