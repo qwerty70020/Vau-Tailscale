@@ -20,17 +20,34 @@ import (
 // and if that fails, it will fall back to the user.GroupIds method.
 func GetGroupIds(user *user.User) ([]string, error) {
 	if runtime.GOOS == "android" {
+		// Two bugs lived in these three lines. `id -Gz` does not exist on
+		// Android at all (toybox: "Unknown option 'z'", verified on Android 16),
+		// and the command was run without a username, so it answered for the
+		// DAEMON — every SSH session got root's groups instead of the user's.
+		// The fallback then returned a hardcoded {"0"}, quietly granting group
+		// root to whoever asked.
+		//
+		// Groups are an Android app's identity: without 3003 (inet) a session
+		// has no network at all, and without 1077/1079 it cannot see /sdcard.
+		// Getting them silently wrong is worse than failing, so failure is
+		// returned to the caller.
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if out, err := exec.CommandContext(ctx, "id", "-Gz").Output(); err == nil {
-			if len(out) > 0 {
-				return parseGroupIds(out), nil
-			}
+		who := user.Username
+		if who == "" {
+			who = user.Uid
 		}
-
-		return []string{"0"}, nil
+		out, err := exec.CommandContext(ctx, "/system/bin/id", "-G", who).Output()
+		if err != nil {
+			return nil, fmt.Errorf("running 'id -G %s': %w", who, err)
+		}
+		ids := parseGroupIds(out)
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("'id -G %s' returned no groups", who)
+		}
+		return ids, nil
 	}
-	
+
 	if runtime.GOOS == "plan9" {
 		return nil, nil
 	}
