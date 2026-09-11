@@ -62,13 +62,14 @@ jobs:
         run: |
           set -euo pipefail
           eval "$(./build_dist.sh shellvars)"
-          # versionCode must only ever grow AND must not depend on how the repo
-          # was cloned. A commit count does the first but not the second: a
-          # shallow clone yields 20 where full history yields 10631, so two
-          # builds of the same source can disagree about which is newer.
-          # yymmddHH is clone-independent, monotonic, and stays well inside
-          # int32 (26091116) unlike a minute-precision stamp.
-          VAU_N=$(date -u +%y%m%d%H)
+          # versionCode must only ever grow, must not depend on how the repo was
+          # cloned, and must differ between two builds made close together.
+          # A commit count fails the second test (shallow clone: 20, full
+          # history: 10631). yymmddHH failed the third — two builds in the same
+          # hour produced the same number, and the phone then refuses the newer
+          # one as "not newer". Minutes since 2026-01-01 satisfies all three and
+          # stays six digits for decades, far inside int32.
+          VAU_N=$(( ( $(date -u +%s) - 1767225600 ) / 60 ))
           MOD_VERSION="v${VERSION_SHORT}-vau${VAU_N}"
           TAG="v${VERSION_SHORT}-vau"
           echo "VERSION_SHORT=$VERSION_SHORT" >> "$GITHUB_ENV"
