@@ -79,6 +79,7 @@
   <button id="t-stan" class="active" onclick="showTab('stan')">Стан</button>
   <button id="t-merezha" onclick="showTab('merezha')">Мережа</button>
   <button id="t-dii" onclick="showTab('dii')">Дії</button>
+  <button id="t-onov" onclick="showTab('onov')">Оновлення</button>
   <button id="t-log" onclick="showTab('log')">Журнал</button>
 </div>
 
@@ -172,6 +173,19 @@
   </div>
 </section>
 
+<!-- ===================== ОНОВЛЕННЯ ================ -->
+<section id="tab-onov" hidden>
+  <div class="row">
+    <button id="uchk" class="sec">🔎 Перевірити</button>
+    <button id="uins" class="ok">⬇ Встановити оновлення</button>
+  </div>
+  <div class="card"><h2>Версії</h2><pre id="uout">натисни «Перевірити»</pre></div>
+  <div class="muted">Оновлення модуля ставиться з підписаного релізу цього репозиторію
+    і застосовується після перезавантаження. Нову версію самого Tailscale з телефона
+    зібрати неможливо — потрібен перенос патчу й збірка в CI; перевірка лише покаже,
+    що вона вийшла.</div>
+</section>
+
 <div class="muted" id="foot"></div>
 
 <script>
@@ -211,7 +225,7 @@ function section(text, from, to){
   return to ? a[1].split(to)[0] : a[1];
 }
 function showTab(name){
-  ["stan","merezha","dii","log"].forEach(t=>{
+  ["stan","merezha","dii","onov","log"].forEach(t=>{
     document.getElementById("tab-"+t).hidden = (t!==name);
     document.getElementById("t-"+t).classList.toggle("active", t===name);
   });
@@ -531,6 +545,15 @@ document.getElementById("ping").onclick = async (e)=>{
 document.getElementById("netcheck").onclick = (e)=>act(e.currentTarget, "…", `${TS} netcheck 2>&1`, "готово");
 document.getElementById("dnsstatus").onclick = (e)=>act(e.currentTarget, "…", `${TS} dns status 2>&1`, "готово");
 document.getElementById("servestatus").onclick = (e)=>act(e.currentTarget, "…", `${TS} serve status 2>&1`, "готово");
+
+// Installing a new root daemon is not a tap to make by accident: armed like
+// the switches that cut access, so the first tap only warns.
+document.getElementById("uchk").onclick = (e)=>act(e.currentTarget, "🔎 …",
+  `sh ${MOD}/update.sh 2>&1`, "перевірено", "uout");
+document.getElementById("uins").onclick = (e)=>{
+  if(!armed(e.currentTarget)){ toast("встановить новий root-демон — натисни ще раз"); return; }
+  return act(e.currentTarget, "⬇ …", `sh ${MOD}/update.sh install 2>&1`, "готово", "uout");
+};
 
 document.getElementById("refresh").onclick = refreshStatus;
 document.getElementById("mrefresh").onclick = loadNetwork;
