@@ -1,0 +1,146 @@
+# fork delta manifest — regenerate with: scripts/android.sh manifest --write
+# Checked automatically after every cherry-pick by compat/update.
+# A '✓ tag' from git means the patch applied, not that it is all there.
+base v1.102.4
+head ae5313eef
+[files]
+167	0	.github/workflows/build_android.yml
+157	0	.github/workflows/upstream-watch.yml
+2	0	clientupdate/clientupdate.go
+362	0	clientupdate/clientupdate_android.go
+10	0	clientupdate/clientupdate_notandroid.go
+1	1	cmd/tailscale/cli/set.go
+1	1	cmd/tailscale/cli/up.go
+1	1	cmd/tailscaled/tailscaled.go
+86	0	docs/BUILD.md
+728	0	docs/superpowers/plans/2026-09-10-vau-tailscale.md
+199	0	docs/vau/AUDIT.md
+184	0	docs/vau/UPSTREAM.md
+643	0	docs/vau/android.sh.next
+1	0	envknob/featureknob/featureknob.go
+1	1	feature/ssh/ssh.go
+0	1	feature/taildrop/fileops_fs.go
+9	0	feature/taildrop/paths.go
+5	0	go.mod
+2	0	go.sum
+79	0	hostinfo/hostinfo_android.go
+8	1	ipn/ipnlocal/local.go
+3	3	ipn/ipnlocal/peerapi.go
+1	1	ipn/ipnserver/actor.go
+1	1	ipn/localapi/cert.go
+1	1	ipn/localapi/disabled_stubs.go
+11	0	logpolicy/logpolicy.go
+25	0	module/action.sh
+54	0	module/customize.sh
+7	0	module/module.prop
+286	0	module/service.sh
+0	0	module/skip_mount
+25	0	module/uninstall.sh
+141	0	module/update.sh
+569	0	module/webroot/index.html
+111	0	net/dns/manager_android.go
+1	1	net/dns/manager_default.go
+25	0	net/dns/resolvconfpath_android.go
+1	1	net/dns/resolvconfpath_default.go
+1	0	net/netmon/interfaces_android.go
+1	1	net/netmon/interfaces_linux.go
+1	1	net/netmon/netmon_linux.go
+1	1	net/netmon/netmon_polling.go
+20	0	net/netmon/state.go
+1	1	net/netns/netns_android.go
+7	1	net/netns/netns_linux.go
+1	1	net/tstun/tun.go
+11	1	paths/paths.go
+9	0	paths/paths_unix.go
+338	0	scripts/android.sh
+35	0	scripts/sign.sh
+52	0	server/moto-watch.sh
+1	1	ssh/tailssh/c2n.go
+1	1	ssh/tailssh/hostkeys.go
+33	1	ssh/tailssh/incubator.go
+1	1	ssh/tailssh/incubator_linux.go
+1	1	ssh/tailssh/tailssh.go
+33	1	ssh/tailssh/user.go
+15	15	tsconst/linuxfw.go
+10	0	tsweb/tsweb.go
+6	0	util/linuxfw/iptables.go
+67	0	util/linuxfw/iptables_runner.go
+29	0	util/osuser/group_ids.go
+8	0	util/osuser/user.go
+148	0	util/osuser/user_android.go
+148	0	util/osuser/user_android_test.go
+1	1	version/version_checkformat.go
+76	0	wgengine/netstack/netstack.go
+1	0	wgengine/pendopen.go
+1	1	wgengine/router/osrouter/router_linux.go
+[markers]
+clientupdate/clientupdate.go	return up.updateAndroid, true
+cmd/tailscale/cli/set.go	case "linux", "android":
+cmd/tailscale/cli/up.go	case "linux","android":
+cmd/tailscaled/tailscaled.go	flag.BoolVar(&args.disableLogs, "no-logs-no-support", true, "disable log uploads; this also disables any technical support")
+envknob/featureknob/featureknob.go	case "android":
+feature/ssh/ssh.go	//go:build (linux || (darwin && !ios) || freebsd || openbsd || plan9) && !ts_omit_ssh
+feature/taildrop/paths.go	if err := os.MkdirAll(dir, 0o700); err == nil {
+go.mod	replace github.com/wlynxg/anet => github.com/BieHDC/anet v0.0.6-0.20241226223613-d47f8b766b3c
+go.mod	github.com/wlynxg/anet v0.0.5
+go.sum	github.com/BieHDC/anet v0.0.6-0.20241226223613-d47f8b766b3c/go.mod h1:eay5PRQr7fIVAMbTbchTnO9gG65Hg/uYGdc7mguHxoA=
+ipn/ipnlocal/local.go	// Example: exit-node peerapi empty because force relogin with different auth url ( need to restart daemon )
+ipn/ipnlocal/peerapi.go	// if runtime.GOOS == "android" {
+ipn/ipnserver/actor.go	case "darwin", "linux", "android", "illumos", "solaris", "openbsd", "freebsd":
+ipn/localapi/cert.go	//go:build !ios && !js && !ts_omit_acme
+ipn/localapi/disabled_stubs.go	//go:build ios || js || ts_omit_acme
+logpolicy/logpolicy.go	if fi, err := os.Stat("/data/adb/tailscale"); err == nil && fi.IsDir() {
+net/dns/manager_default.go	//go:build !linux && !android && !freebsd && !openbsd && !windows && !darwin && !illumos && !solaris && !plan9
+net/dns/resolvconfpath_default.go	//go:build !gokrazy && !android
+net/netmon/interfaces_android.go	//go:build ignore
+net/netmon/interfaces_linux.go	//go:build linux
+net/netmon/netmon_linux.go	//go:build linux
+net/netmon/netmon_polling.go	//go:build (!linux && !freebsd && !windows && !darwin) 
+net/netmon/state.go	"github.com/wlynxg/anet"
+net/netmon/state.go	return anet.InterfaceAddrsByInterface(i.Interface)
+net/netmon/state.go	if envknob.Bool("TS_ASSUME_NETWORK_UP_FOR_TEST") {
+net/netmon/state.go	// Use the netmon package to get the addresses
+net/netns/netns_android.go	//go:build ignore
+net/netns/netns_linux.go	//go:build linux
+net/netns/netns_linux.go	// Example case: force use HTTP_PROXY / HTTPS_PROXY in device without default route / internet route.
+net/tstun/tun.go	if runtime.GOOS != "linux" && runtime.GOOS != "android" {
+paths/paths.go	if fi, err := os.Stat("/data/adb/tailscale"); err == nil && fi.IsDir() {
+paths/paths.go	case "plan9", "android":
+paths/paths_unix.go	return filepath.Join(prefix, "var", "lib", "tailscale", "tailscaled.state")
+ssh/tailssh/c2n.go	//go:build linux || (darwin && !ios) || freebsd || openbsd || plan9
+ssh/tailssh/hostkeys.go	//go:build linux || (darwin && !ios) || freebsd || openbsd || plan9
+ssh/tailssh/incubator.go	//go:build (linux && !android) || android || (darwin && !ios) || freebsd || openbsd
+ssh/tailssh/incubator.go	android = "android"
+ssh/tailssh/incubator.go	// Vau's Android-specific env carry-over
+ssh/tailssh/incubator.go	// Vau's Android-specific: set working directory to HOME
+ssh/tailssh/incubator.go	return []string{loginCmdPath}
+ssh/tailssh/incubator.go	fmt.Println("Setgroups failed:", err)
+ssh/tailssh/incubator_linux.go	//go:build linux
+ssh/tailssh/tailssh.go	//go:build (linux && !android) || android || (darwin && !ios) || freebsd || openbsd || plan9
+ssh/tailssh/user.go	//go:build (linux && !android) || android || (darwin && !ios) || freebsd || openbsd || plan9
+ssh/tailssh/user.go	sys := "/system/bin:/system_ext/bin:/vendor/bin:/apex/com.android.art/bin:/apex/com.android.runtime/bin"
+ssh/tailssh/user.go	func dirExists(p string) bool {
+tsconst/linuxfw.go	// https://android.googlesource.com/platform/system/netd/+/master/include/Fwmark.h
+tsconst/linuxfw.go	LinuxFwmarkMask    = "0x1e000000"
+tsconst/linuxfw.go	LinuxSubnetRouteMark    = "0x8000000"
+tsconst/linuxfw.go	// Includes bit 17 (0x20000) ProtectedFromVPN to bypass Android VPN routing.
+tsweb/tsweb.go	if fi, err := os.Stat("/data/adb/tailscale"); err == nil && fi.IsDir() {
+util/linuxfw/iptables.go	if err := delTSHook(ipt, "mangle", "PREROUTING", logf); err != nil {
+util/linuxfw/iptables.go	if err := delChain(ipt, "mangle", "ts-prerouting"); err != nil {
+util/linuxfw/iptables_runner.go	if err := divert(ipt, "mangle", "PREROUTING"); err != nil {
+util/linuxfw/iptables_runner.go	if err := create(ipt, "mangle", "ts-prerouting"); err != nil {
+util/linuxfw/iptables_runner.go	// For Android: mark in PREROUTING so routing decision can use the mark
+util/linuxfw/iptables_runner.go	// Mark packets from subnetRouter, need enable IP6 NAT zcat /proc/config.gz | grep IP6_NF_NAT 2>/dev/null
+util/linuxfw/iptables_runner.go	if err := delChain(ipt, "mangle", "ts-prerouting"); err != nil {
+util/linuxfw/iptables_runner.go	if err := del(ipt, "mangle", "ts-prerouting"); err != nil {
+util/linuxfw/iptables_runner.go	if err := delTSHook(ipt, "mangle", "PREROUTING", logf); err != nil {
+util/osuser/group_ids.go	out, err := exec.CommandContext(ctx, "/system/bin/id", "-G", who).Output()
+util/osuser/user.go	// overrideLookupFunc is set by custom platform-specific implementations.
+util/osuser/user.go	if runtime.GOOS == "android" && overrideLookupFunc != nil {
+version/version_checkformat.go	//go:build ignore
+wgengine/netstack/netstack.go	func (ns *Impl) handleDNSQueryCopy(query []byte, src, dst netip.AddrPort, ipVersion uint8, proto ipproto.Proto) {
+wgengine/netstack/netstack.go	if p.Dst.Port() == 53 && (p.IPProto == ipproto.UDP || p.IPProto == ipproto.TCP) {
+wgengine/pendopen.go	// TODO: android also, but IPV6
+wgengine/router/osrouter/router_linux.go	//go:build linux
+[absent]
+feature/taildrop/fileops_fs.go	//go:build !android
