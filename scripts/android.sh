@@ -445,10 +445,17 @@ cmd_compat() {
     else
         all=$(printf '%s\n' "$all" | grep -v -- '-' || true)
     fi
+    # Порядок версий, а не порядок строк. Как строка "v1.61.0-pre" больше
+    # "v1.102.4" — на третьем символе 6 бьёт 1, — и прогон --rc уходил
+    # переигрывать два десятка тегов старше нашей же базы. vnum() снимает v,
+    # отбрасывает -pre/-rc и сворачивает остаток в число, где 1.61.0 стоит ниже
+    # 1.102.4. Сортировка на входе (--sort=version:refname) здесь не помогает:
+    # фильтр сравнивает заново и по-своему.
+    local vnum='function vnum(t,  p) { sub(/^v/, "", t); sub(/-.*$/, "", t); split(t, p, "."); return p[1] * 1000000 + p[2] * 1000 + p[3] }'
     if [ -n "$to" ]; then
-        tags=$(printf '%s\n' "$all" | awk -v f="$from" -v t="$to" 'f<$0 && $0<=t')
+        tags=$(printf '%s\n' "$all" | awk -v f="$from" -v t="$to" "$vnum"' vnum($0) > vnum(f) && vnum($0) <= vnum(t)')
     else
-        tags=$(printf '%s\n' "$all" | awk -v f="$from" '$0>f' | head -30)
+        tags=$(printf '%s\n' "$all" | awk -v f="$from" "$vnum"' vnum($0) > vnum(f)' | head -30)
     fi
 
     if [ -z "$tags" ]; then
@@ -472,33 +479,40 @@ cmd_compat() {
         fi
 
         if [ -n "$applied" ]; then
-            local status="✓ $tag"
-            local mf_out="" mf_bad=""
+            local mf_out="" bad="" tail=""
             if [ -f "$manifest_copy" ]; then
-                if mf_out=$(verify_manifest "$tag" "$manifest_copy"); then :; else mf_bad="1"; fi
-                [ -n "$mf_bad" ] && status="✗ $tag [манифест]"
+                if mf_out=$(verify_manifest "$tag" "$manifest_copy"); then :; else
+                    bad="1"; tail=" [манифест]"
+                fi
             fi
             if [ -n "$do_check" ] || [ -n "$do_build" ]; then
                 local btags
                 btags=$(get_build_tags 2>/dev/null)
                 if [ -n "$do_check" ]; then
                     if GOOS=android GOARCH=arm64 CGO_ENABLED=0 ./tool/go vet -tags="$btags" ./cmd/tailscaled ./cmd/tailscale 2>/dev/null; then
-                        status="$status [vet ✓]"
+                        tail="$tail [vet ✓]"
                     else
-                        status="$status [vet ✗]"
+                        tail="$tail [vet ✗]"
+                        bad="1"
                     fi
                 fi
                 if [ -n "$do_build" ]; then
                     if GOOS=android GOARCH=arm64 CGO_ENABLED=0 ./tool/go build -tags="$btags" -o /dev/null -trimpath ./cmd/tailscaled 2>/dev/null; then
-                        status="$status [build ✓]"
+                        tail="$tail [build ✓]"
                     else
-                        status="$status [build ✗]"
+                        tail="$tail [build ✗]"
+                        bad="1"
                     fi
                 fi
             fi
-            echo "$status"
+            if [ -n "$bad" ]; then
+                echo "✗ $tag$tail"
+                failed=$((failed + 1))
+            else
+                echo "✓ $tag$tail"
+                passed=$((passed + 1))
+            fi
             [ -n "$mf_out" ] && printf '%s\n' "$mf_out"
-            if [ -n "$mf_bad" ]; then failed=$((failed + 1)); else passed=$((passed + 1)); fi
         else
             local conflicts
             conflicts=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ' ')

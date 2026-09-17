@@ -14,6 +14,10 @@ name: "upstream-watch"
 # So the automation ends at "a branch that builds, with a PR describing it" or
 # "an issue naming the conflicted files".
 #
+# A second job (rc-watch) runs the same replay against upstream *pre-release*
+# tags and can only ever open an issue. The point is to find out during the RC
+# window that upstream broke us, not to move anything.
+#
 # Values that come from outside (the upstream tag name) are passed through env:
 # and used as "$VARS" in shell, never interpolated into the script text — this
 # job holds contents/pull-requests/issues write.
@@ -155,3 +159,85 @@ jobs:
             echo "Локально: scripts/android.sh update $NEW, разрешить, собрать, проверить на телефоне."
           } > /tmp/issue-body.md
           gh issue create --title "$TITLE" --body-file /tmp/issue-body.md
+
+  # Same replay, two weeks early: upstream release candidates.
+  #
+  # This job never calls `gh release list` — cmd_compat --rc picks the -pre tags
+  # out of the git tag list in its own clone. The stable watcher above stays the
+  # only owner of that path.
+  rc-watch:
+    runs-on: ubuntu-latest
+    permissions:        # narrower than the workflow default: this job pushes nothing
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # find_base_commit greps the whole log for the VERSION.txt commit
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Replay the patch onto upstream release candidates
+        id: rc
+        run: |
+          set -uo pipefail   # no -e: the exit code below is read, not obeyed
+          if out=$(./scripts/android.sh compat --rc --check 2>&1); then rc=0; else rc=$?; fi
+          printf '%s\n' "$out"
+
+          # compat exits 1 with this line when no -pre tag is newer than our
+          # base. That is the ordinary outcome on most days, not a failure.
+          if printf '%s\n' "$out" | grep -q '^No tags found after'; then
+            echo "RC watch: пре-релизных тегов новее нашей базы нет." >> "$GITHUB_STEP_SUMMARY"
+            echo "failed=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "compat exited $rc without a tag list — script or network, not the patch" >&2
+            exit 1
+          fi
+
+          # cmd_compat returns 0 whatever the verdict, so the tally is the only
+          # signal. An empty parse means the output format moved: fail loudly
+          # rather than read silence as "nothing broke".
+          printf '%s\n' "$out" > /tmp/rc-out.txt
+          FAILED=$(sed -n 's/^Passed: [0-9]*  Failed: \([0-9]*\)$/\1/p' /tmp/rc-out.txt)
+          if [ -z "$FAILED" ]; then
+            echo "no 'Passed: N  Failed: M' line in compat output" >&2
+            exit 1
+          fi
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "tag=$(sed -n 's/^✗ \([^ ]*\).*/\1/p' /tmp/rc-out.txt | tail -1)" >> "$GITHUB_OUTPUT"
+          echo "RC watch: Failed: $FAILED" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report an RC regression
+        if: success() && steps.rc.outputs.failed != '' && steps.rc.outputs.failed != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.rc.outputs.tag }}
+        run: |
+          set -euo pipefail
+          TITLE="upstream $TAG (RC): патч ломается заранее"
+          if gh issue list --search "$TITLE in:title" --json number --jq '.[0].number' | grep -q .; then
+            echo "issue already open"; exit 0
+          fi
+          {
+            echo "Прогон \`scripts/android.sh compat --rc --check\` на пре-релизных тегах:"
+            echo
+            echo '```'
+            cat /tmp/rc-out.txt
+            echo '```'
+            echo
+            echo "Строка с ✗ — это одно из трёх: конфликт cherry-pick, потеря куска патча"
+            echo "(манифест) или \`go vet\` после переноса. Первые два значат, что апстрим"
+            echo "тронул те же места, что и мы; третье — что патч применился, но код после"
+            echo "него не собирается."
+            echo
+            echo "Это ещё RC, а не релиз: время есть. Локально —"
+            echo "\`scripts/android.sh compat --rc --check\`, дальше \`update $TAG\`."
+          } > /tmp/rc-issue.md
+          gh issue create --title "$TITLE" --body-file /tmp/rc-issue.md
