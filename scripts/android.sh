@@ -300,6 +300,28 @@ cmd_build() {
     [ "$#" -eq 0 ] && { echo "Usage: $0 build [--pre] [--upx] [--nocgo] [--allow-dirty] <arm|arm64|amd64>"; exit 1; }
 
     set_arch "$1"
+
+    # Версия приходит из mkversion (build_dist.sh shellvars) и выглядит как
+    # 1.102.4-5-tde9187c6a: тег, расстояние, коммит. Суффикса -dirty там нет
+    # никогда — mkversion грязь не отражает, так что грепать ldflags бесполезно.
+    # Единственный свидетель того, что бинарь соответствует коммиту, — само дерево.
+    # Untracked считаем грязью осознанно: лишний .go в пакете компилируется
+    # наравне с остальными, а git describe его не замечает.
+    # Демон ходит root'ом и откатывается сравнением бинарей — это гейт, не предупреждение.
+    # Стоит до setup_ndk: на грязном дереве NDK качать незачем.
+    if [ -z "$ALLOW_DIRTY" ]; then
+        local dirt n
+        dirt=$(git status --porcelain 2>/dev/null) || dirt=""
+        if [ -n "$dirt" ]; then
+            n=$(printf '%s\n' "$dirt" | wc -l)
+            echo "✗ дерево грязное — бинарь не будет соответствовать $(git rev-parse --short HEAD 2>/dev/null || echo '?') ($n путей):"
+            printf '%s\n' "$dirt" | sed -n '1,5s/^/    /p'
+            if [ "$n" -gt 5 ]; then echo "    … и ещё $((n - 5))"; fi
+            echo "  Закоммить или спрячь; --allow-dirty если это осознанно."
+            exit 1
+        fi
+    fi
+
     if [ -z "$NO_CGO" ]; then
         export CGO_ENABLED=1
         setup_ndk
@@ -310,17 +332,6 @@ cmd_build() {
 
     local tags=$(get_build_tags)
     local ldflags=$(get_ldflags)
-
-    # A -dirty stamp means the binary does not correspond to any commit: nobody,
-    # including the phone it lands on, can say later what is actually running.
-    # The daemon runs as root and is rolled back by comparing binaries, so this
-    # is a gate, not a warning.
-    if [ -z "$ALLOW_DIRTY" ] && printf '%s' "$ldflags" | grep -q -- '-dirty'; then
-        echo "✗ дерево грязное — версия штампуется как *-dirty."
-        echo "  Такой бинарь нельзя потом сопоставить с коммитом."
-        echo "  git status, закоммить или спрячь; --allow-dirty если это осознанно."
-        exit 1
-    fi
 
     mkdir -p ./dist
     ./tool/go build -tags="$tags" -ldflags="$ldflags" -o "./dist/tailscaled.${GOARCH}" -trimpath ./cmd/tailscaled
