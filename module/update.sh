@@ -112,11 +112,22 @@ install_update() {
 
     # The module runs on both root implementations and they install packages
     # differently: KernelSU has ksud, Magisk has `magisk --install-module`.
-    # Checked on the second handset (OnePlus Nord, Magisk 30700) — there is no
-    # ksud there at all, so hardcoding it would have failed at the last step,
-    # after the download and the checksum had already succeeded.
+    # On the second handset (OnePlus Nord, Magisk 30700) there is no ksud at
+    # all, so hardcoding it would have failed at the last step, after the
+    # download and the checksum had already succeeded.
+    #
+    # Both are probed by absolute path before PATH is consulted, because PATH is
+    # not the same everywhere the script can run. Over Tailscale SSH it is
+    # /system/bin:/system_ext/bin:/vendor/bin:/apex/... with no magisk symlink
+    # anywhere in it, and `command -v magisk` then fails on a phone that plainly
+    # has Magisk — measured on the Nord, where an install died right here with
+    # "ні ksud, ні magisk" while /data/adb/magisk/magisk -V printed 30700.
     if [ -x /data/adb/ksud ]; then
         INSTALLER="/data/adb/ksud module install"
+    elif [ -x /data/adb/magisk/magisk ]; then
+        INSTALLER="/data/adb/magisk/magisk --install-module"
+    elif command -v ksud >/dev/null 2>&1; then
+        INSTALLER="ksud module install"
     elif command -v magisk >/dev/null 2>&1; then
         INSTALLER="magisk --install-module"
     else
@@ -132,7 +143,7 @@ install_update() {
         rm -f "$WORK/$ZIP_NAME"
         return 0
     fi
-    say "ksud не зміг встановити пакет"; log "ksud install failed"; return 1
+    say "встановлювач не зміг застосувати пакет"; log "install failed ($INSTALLER)"; return 1
 }
 
 case "$1" in
