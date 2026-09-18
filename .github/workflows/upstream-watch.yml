@@ -1,0 +1,157 @@
+name: "upstream-watch"
+
+# Watches tailscale/tailscale for a newer stable release and tries to move our
+# Android patch onto it.
+#
+# What it does NOT do, deliberately:
+#   * it never pushes to the working branch and never publishes a release. A
+#     root daemon that keeps a phone reachable is not something to swap on a
+#     schedule; the human step is one click on the existing release workflow.
+#   * it never resolves a conflict. A cherry-pick that does not apply cleanly
+#     means upstream changed code our patch also changes — DNS, routing, SSH,
+#     the exact places the audit is about. That is a review, not a merge.
+#
+# So the automation ends at "a branch that builds, with a PR describing it" or
+# "an issue naming the conflicted files".
+#
+# Values that come from outside (the upstream tag name) are passed through env:
+# and used as "$VARS" in shell, never interpolated into the script text — this
+# job holds contents/pull-requests/issues write.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"   # daily, early morning UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Compare our base with the latest upstream stable
+        id: cmp
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CUR="v$(cat VERSION.txt)"
+          # Newest non-prerelease tag upstream: -pre builds are not what a
+          # phone should end up running.
+          NEW=$(gh release list -R tailscale/tailscale -L 1 --exclude-pre-releases \
+                  --json tagName --jq '.[0].tagName')
+          case "$NEW" in
+            v[0-9]*) : ;;
+            *) echo "::error::unexpected upstream tag: $NEW"; exit 1 ;;
+          esac
+          {
+            echo "current=$CUR"
+            echo "latest=$NEW"
+            if [ "$CUR" = "$NEW" ]; then echo "up_to_date=true"; else echo "up_to_date=false"; fi
+          } >> "$GITHUB_OUTPUT"
+          echo "our base: $CUR | upstream latest: $NEW"
+
+      - name: Try moving the patch onto the new tag
+        if: steps.cmp.outputs.up_to_date == 'false'
+        id: rebase
+        env:
+          CUR: ${{ steps.cmp.outputs.current }}
+          NEW: ${{ steps.cmp.outputs.latest }}
+        run: |
+          set -euo pipefail
+          git config user.name "upstream-watch"
+          git config user.email "noreply@github.com"
+          git remote add upstream https://github.com/tailscale/tailscale.git 2>/dev/null || true
+          git fetch --no-tags upstream "refs/tags/$CUR:refs/tags/$CUR" "refs/tags/$NEW:refs/tags/$NEW"
+
+          BRANCH="auto/rebase-$NEW"
+          git checkout -q -B "$BRANCH" "refs/tags/$NEW"
+          # Our patch is everything between the upstream tag we sit on and the
+          # tip of the working branch.
+          if git cherry-pick "refs/tags/$CUR..origin/$GITHUB_REF_NAME" >/tmp/cp.log 2>&1; then
+            { echo "clean=true"; echo "branch=$BRANCH"; } >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            git diff --name-only --diff-filter=U > /tmp/conflicts.txt || true
+            git cherry-pick --abort || true
+            echo "conflicts:"; cat /tmp/conflicts.txt
+          fi
+
+      - name: Build the result
+        if: steps.rebase.outputs.clean == 'true'
+        id: build
+        run: |
+          set -euo pipefail
+          # Build only. The device tests (util/osuser) are android/arm64 and
+          # cannot execute on this runner, so a green build here is NOT proof
+          # the patch still behaves — that check belongs on the phone.
+          ./scripts/android.sh build --nocgo arm64
+          ls -lh dist/
+
+      - name: Open a PR with the rebased patch
+        if: steps.rebase.outputs.clean == 'true' && steps.build.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.rebase.outputs.branch }}
+          NEW: ${{ steps.cmp.outputs.latest }}
+          BASE: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git push -f origin "$BRANCH"
+          if gh pr view "$BRANCH" >/dev/null 2>&1; then
+            echo "PR already open"; exit 0
+          fi
+          {
+            echo "Автоматический перенос патча на upstream \`$NEW\`."
+            echo
+            echo "Проверено здесь: cherry-pick без конфликтов, сборка android/arm64 проходит."
+            echo "НЕ проверено: поведение на устройстве. Тесты util/osuser — android/arm64,"
+            echo "на раннере они не запускаются. H1/H2/H3 проверяются только на телефоне:"
+            echo "вход под выдуманным именем должен отклоняться, shell@ получать свои группы,"
+            echo "HOME не должен быть каталогом демона."
+            echo
+            echo "Дальше вручную: слить PR, запустить build_android.yml, затем на телефоне"
+            echo "нажать «Оновлення → Встановити» и перезагрузиться."
+          } > /tmp/pr-body.md
+          gh pr create --head "$BRANCH" --base "$BASE" \
+            --title "upstream $NEW: patch applies cleanly, builds" \
+            --body-file /tmp/pr-body.md
+
+      - name: Report a conflict instead of guessing
+        if: steps.rebase.outputs.clean == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW: ${{ steps.cmp.outputs.latest }}
+        run: |
+          set -euo pipefail
+          TITLE="upstream $NEW: патч не переносится автоматически"
+          if gh issue list --search "$TITLE in:title" --json number --jq '.[0].number' | grep -q .; then
+            echo "issue already open"; exit 0
+          fi
+          {
+            echo "Cherry-pick нашего патча на \`$NEW\` дал конфликты:"
+            echo
+            echo '```'
+            cat /tmp/conflicts.txt 2>/dev/null || echo "(список не сохранился)"
+            echo '```'
+            echo
+            echo "Эти файлы патч и апстрим меняют одновременно. Разрешать автоматически нельзя:"
+            echo "именно там живут DNS, маршрутизация и SSH — те места, о которых весь аудит."
+            echo
+            echo "Локально: scripts/android.sh update $NEW, разрешить, собрать, проверить на телефоне."
+          } > /tmp/issue-body.md
+          gh issue create --title "$TITLE" --body-file /tmp/issue-body.md

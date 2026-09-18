@@ -1,0 +1,167 @@
+name: "vau-release"
+
+# Builds the android tailscaled for this fork and publishes a SIGNED release.
+#
+# Every third-party action is pinned to a commit SHA, not a tag: a tag can be
+# moved to different code, and this workflow builds a binary that later runs as
+# root on a phone. The NDK and UPX actions are gone entirely — the build is
+# CGO-free (no NDK needed) and UPX only inflates RSS on a handset that already
+# hits LOW_MEMORY (see docs/vau/AUDIT.md, M10).
+#
+# arm64 only. Go's android/arm (32-bit) port cannot link without cgo —
+# "android/arm requires external (cgo) linking, but cgo is not enabled" — so a
+# 32-bit build would mean dragging the NDK back in for an architecture no
+# target device has (both handsets are aarch64).
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*-vau*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Install minisign
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+
+      - name: Guard — the self-updater must stay out of the build
+        run: |
+          set -euo pipefail
+          # The `clientupdate` feature tag is what puts `tailscale update` in the
+          # binary: it downloads tailscaled from a third-party repo, unsigned,
+          # and installs it 0777 (docs/vau/AUDIT.md, C1). If someone drops this
+          # from the remove list, the release must fail here, not on a phone.
+          grep -q 'clientupdate' scripts/android.sh
+          echo "ok: clientupdate is in the remove list"
+
+      - name: Build arm64 (no cgo)
+        run: ./scripts/android.sh build --nocgo arm64
+
+      - name: Package binary, KSU module and checksums
+        run: |
+          set -euo pipefail
+          eval "$(./build_dist.sh shellvars)"
+          # versionCode must only ever grow, must not depend on how the repo was
+          # cloned, and must differ between two builds made close together.
+          # A commit count fails the second test (shallow clone: 20, full
+          # history: 10631). yymmddHH failed the third — two builds in the same
+          # hour produced the same number, and the phone then refuses the newer
+          # one as "not newer". Minutes since 2026-01-01 satisfies all three and
+          # stays six digits for decades, far inside int32.
+          VAU_N=$(( ( $(date -u +%s) - 1767225600 ) / 60 ))
+          MOD_VERSION="v${VERSION_SHORT}-vau${VAU_N}"
+          TAG="v${VERSION_SHORT}-vau"
+          echo "VERSION_SHORT=$VERSION_SHORT" >> "$GITHUB_ENV"
+          echo "MOD_VERSION=$MOD_VERSION" >> "$GITHUB_ENV"
+
+          cd dist
+          tar -czf "tailscale_${VERSION_SHORT}_arm64.tgz" --transform='s/tailscaled.arm64/tailscaled/' tailscaled.arm64
+          cd ..
+
+          # The KSU module ships the binary inside the zip, so a fresh install
+          # works offline and an update is one file to fetch and verify. The
+          # installer moves it into /data/adb/tailscale and drops it from the
+          # module directory, so the device keeps a single copy.
+          rm -rf dist/module
+          mkdir -p dist/module/bin
+          cp module/module.prop module/service.sh module/uninstall.sh \
+             module/action.sh module/customize.sh module/update.sh \
+             module/skip_mount dist/module/
+          cp -r module/webroot dist/module/
+          cp dist/tailscaled.arm64 dist/module/bin/tailscaled
+          # versionCode must only ever grow; the commit count does that without
+          # a file anyone has to remember to bump.
+          sed -i "s/^version=.*/version=${MOD_VERSION}/" dist/module/module.prop
+          sed -i "s/^versionCode=.*/versionCode=${VAU_N}/" dist/module/module.prop
+          ZIP="vau-tailscale-${MOD_VERSION}.zip"
+          (cd dist/module && zip -qX -r "../${ZIP}" .)
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+          printf '%s\n' \
+            '{' \
+            "  \"version\": \"${MOD_VERSION}\"," \
+            "  \"versionCode\": ${VAU_N}," \
+            "  \"zipUrl\": \"https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP}\"," \
+            "  \"changelog\": \"https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/CHANGELOG.txt\"" \
+            '}' > dist/update.json
+
+          printf '%s\n' "Vau Tailscale ${MOD_VERSION}" \
+            "tailscale commit: ${GITHUB_SHA}" \
+            "build: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/CHANGELOG.txt
+
+          # Checksums cover everything that ships and are produced BEFORE
+          # signing, so the signature covers the same set. A SHA256SUMS naming
+          # files that are not release assets makes `sha256sum -c` fail for
+          # everyone who downloads it.
+          cd dist
+          sha256sum tailscale_*.tgz "$ZIP" update.json CHANGELOG.txt > SHA256SUMS
+          ls -lh
+
+      - name: Sign artifacts
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: ./scripts/sign.sh dist/tailscale_*.tgz dist/SHA256SUMS
+
+      - name: Verify the signatures with the published public key
+        run: |
+          set -euo pipefail
+          # Proves the release verifies with the key people are told to use,
+          # rather than merely with whatever key CI happened to sign with.
+          PUB=$(grep -m1 '^RW' docs/BUILD.md)
+          for sig in dist/*.minisig; do
+            minisign -Vm "${sig%.minisig}" -P "$PUB"
+          done
+
+      - name: Drop module zips left by earlier builds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-vau', env.VERSION_SHORT) }}
+        run: |
+          set -euo pipefail
+          # The release tag is reused and the upload action only ADDS files, so
+          # a previous build's zip stays attached — no longer covered by the
+          # current SHA256SUMS, yet still installable by anyone who scrolls the
+          # asset list. Remove every module zip that is not the one just built.
+          if gh release view "$TAG" --json assets --jq '.assets[].name' > /tmp/assets.txt 2>/dev/null; then
+            grep '^vau-tailscale-.*\.zip$' /tmp/assets.txt | grep -v -x -F "$ZIP" \
+              | while read -r a; do
+                  echo "removing stale asset: $a"
+                  gh release delete-asset "$TAG" "$a" -y || true
+                done
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-vau', env.VERSION_SHORT) }}
+          prerelease: ${{ inputs.prerelease == true }}
+          generate_release_notes: true
+          files: |
+            dist/*.tgz
+            dist/*.zip
+            dist/update.json
+            dist/CHANGELOG.txt
+            dist/*.minisig
+            dist/SHA256SUMS
