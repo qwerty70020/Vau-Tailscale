@@ -1,0 +1,7 @@
+id=vau_tailscale
+name=Vau Tailscale (root tailscaled)
+version=v0.1.0
+versionCode=1
+author=vau
+description=Runs tailscaled as root from /data/adb/tailscale, which is DE storage — so the node is on the tailnet BEFORE the first unlock, when the Tailscale app and Termux cannot run at all. Userspace networking by default: no tailscale0, no ip rules, no iptables, so it cannot break the phone's network and does not fight the Tailscale app. Tailscale SSH gives a way in that survives an app kill. Built and signed by this repo's CI; the binary carries no self-updater. Logs to /data/local/tmp/vau_tailscale.log.
+updateJson=https://github.com/qwerty70020/Vau-Tailscale/releases/latest/download/update.json
