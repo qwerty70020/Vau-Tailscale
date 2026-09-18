@@ -2,7 +2,7 @@
 # Checked automatically after every cherry-pick by compat/update.
 # A '✓ tag' from git means the patch applied, not that it is all there.
 base v1.102.4
-head 822d7edf8
+head 352b49cff
 [files]
 167	0	.github/workflows/build_android.yml
 243	0	.github/workflows/upstream-watch.yml
@@ -35,7 +35,7 @@ head 822d7edf8
 286	0	module/service.sh
 0	0	module/skip_mount
 25	0	module/uninstall.sh
-141	0	module/update.sh
+152	0	module/update.sh
 569	0	module/webroot/index.html
 111	0	net/dns/manager_android.go
 1	1	net/dns/manager_default.go
