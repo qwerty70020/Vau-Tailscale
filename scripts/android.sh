@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tailscale Android development script
-# Usage:
+# Скрипт розробки Tailscale для Android
+# Використання:
 #   ./scripts/android.sh build [--pre] [--upx] [--nocgo] [--allow-dirty] <arm|arm64|amd64>
 #   ./scripts/android.sh check [arm64]
 #   ./scripts/android.sh compat [--check] [--build] [--rc] [--squash] [stop-tag]
@@ -8,11 +8,11 @@
 #   ./scripts/android.sh manifest [--write]
 #   ./scripts/android.sh verify [base-ref]
 #
-# Why manifest/verify exist: a cherry-pick that ends with "✓" only proves git
-# found a place to put every hunk. It does not prove the hunks are still there.
-# A hand-resolved conflict can quietly drop an additive hunk inside a file that
-# upstream already ships — and the result still compiles. That is exactly how
-# the router_linux.go build-tag patch was lost once. See docs/vau/UPSTREAM.md.
+# Навіщо існують manifest/verify: cherry-pick, що завершився «✓», доводить лише,
+# що git знайшов, куди покласти кожен hunk. Він не доводить, що hunk'и досі там.
+# Конфлікт, розв'язаний руками, може тихо викинути додатковий hunk у файлі, який
+# upstream і так постачає, — і результат усе одно компілюється. Саме так одного
+# разу було втрачено патч build-тегу в router_linux.go. Див. docs/vau/UPSTREAM.md.
 
 set -euo pipefail
 
@@ -20,12 +20,12 @@ NDK_VERSION="r27c"
 NDK_DIR="/tmp/android-ndk-${NDK_VERSION}-linux"
 MANIFEST_REL="scripts/fork-manifest.txt"
 
-# --- Helpers ---
+# --- Допоміжні функції ---
 
 setup_ndk() {
     export ANDROID_NDK_PATH="${ANDROID_NDK_PATH:-${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64/bin}"
     if [ -d "$ANDROID_NDK_PATH" ]; then return; fi
-    echo "Downloading NDK ${NDK_VERSION}..."
+    echo "Завантажую NDK ${NDK_VERSION}..."
     curl -# -L "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip" -o /tmp/android-ndk.zip
     unzip -q /tmp/android-ndk.zip -d /tmp
     mv "/tmp/android-ndk-${NDK_VERSION}" "$NDK_DIR"
@@ -38,15 +38,15 @@ set_arch() {
         arm)   export GOARCH=arm CC=armv7a-linux-androideabi21-clang CXX=armv7a-linux-androideabi21-clang++ ;;
         arm64) export GOARCH=arm64 CC=aarch64-linux-android21-clang CXX=aarch64-linux-android21-clang++ ;;
         amd64) export GOARCH=amd64 CC=x86_64-linux-android21-clang CXX=x86_64-linux-android21-clang++ ;;
-        *)     echo "Unknown arch: $1"; exit 1 ;;
+        *)     echo "Невідома архітектура: $1"; exit 1 ;;
     esac
 }
 
 get_build_tags() {
-    # clientupdate is removed on purpose: with it the binary carries a
-    # `tailscale update` that downloads tailscaled from a third-party GitHub
-    # repo with no signature check and installs it 0777 (see docs/vau/AUDIT.md, C1).
-    # Updates come from reinstalling the KSU module, nothing else.
+    # clientupdate вимкнено навмисно: з ним бінарник несе `tailscale update`,
+    # який завантажує tailscaled зі стороннього GitHub-репозиторію без перевірки
+    # підпису і ставить його з правами 0777 (див. docs/vau/AUDIT.md, C1).
+    # Оновлення приходять лише перевстановленням KSU-модуля, і ніяк інакше.
     local remove="aws,bird,tap,kube,completion,completion_scripts,wakeonlan,capture,systray,syspolicy,appconnectors,identityfederation,usermetrics,logtail,netlog,linuxdnsfight,tpm,clientupdate"
     GOOS= GOARCH= ./tool/go run ./cmd/featuretags --remove "$remove" --add "cli"
 }
@@ -65,23 +65,24 @@ compress() {
         tar -xf /tmp/upx.tar.xz -C /tmp && sudo mv /tmp/upx-5.0.2-amd64_linux/upx /usr/local/bin/
         rm -rf /tmp/upx.tar.xz /tmp/upx-5.0.2-amd64_linux
     fi
-    echo "Before: $(du -h "$1" | cut -f1)"
+    echo "До:    $(du -h "$1" | cut -f1)"
     upx --lzma --best "$1" 2>&1 | grep -v "^$" || true
-    echo "After:  $(du -h "$1" | cut -f1)"
+    echo "Після: $(du -h "$1" | cut -f1)"
 }
 
-# The upstream commit our patch sits on: the "VERSION.txt: this is vX.Y.Z"
-# commit tailscale tags every release with. Used in three places, so it lives
-# here instead of being re-typed each time.
+# Upstream-коміт, на якому сидить наш патч: коміт «VERSION.txt: this is vX.Y.Z»,
+# яким tailscale позначає кожен реліз. Потрібен у трьох місцях, тому живе тут,
+# а не передруковується щоразу.
 find_base_commit() {
     local v="${1#v}"
     git log --oneline | grep "VERSION.txt: this is v\?${v}" | head -1 | cut -d' ' -f1
 }
 
-# `git clone --shared` shares objects but NOT .git/rr-cache, so a conflict
-# resolved by hand in the real repo would have to be resolved again inside every
-# throwaway clone. Symlinking the cache in is what makes rerere actually pay off
-# here: build tags and go.mod conflict the same way on every single tag.
+# `git clone --shared` ділить об'єкти, але НЕ .git/rr-cache, тож конфлікт,
+# розв'язаний руками у справжньому репозиторії, довелося б розв'язувати знову
+# в кожному одноразовому клоні. Симлінк на кеш — саме те, завдяки чому rerere
+# тут узагалі окупається: build-теги і go.mod конфліктують однаково на кожному
+# тезі.
 clone_shared() {
     local src="$1" dst="$2"
     git clone --quiet --shared "$src" "$dst"
@@ -96,30 +97,31 @@ enable_rerere() {
     if [ "$(git config --get rerere.enabled 2>/dev/null || true)" != "true" ]; then
         git config rerere.enabled true
         git config rerere.autoupdate true
-        echo "rerere включён: конфликт, разрешённый один раз, дальше применяется сам."
+        echo "rerere увімкнено: конфлікт, розв'язаний один раз, далі застосовується сам."
     fi
     mkdir -p "$(git rev-parse --git-dir)/rr-cache"
 }
 
-# --- Manifest ---
+# --- Маніфест ---
 
-# Emit the manifest for base..head on stdout.
+# Вивести маніфест для base..head на stdout.
 #
-# [files]   the full numstat. After a rebase every path here must still show up
-#           in the delta — a path that vanished is a patch that was dropped.
-# [markers] ONE literal line per hunk, for files that ALREADY EXIST upstream at
-#           base. A brand-new file either survives whole or disappears from
-#           [files], so it needs no marker. The dangerous case is the opposite
-#           one: +76 lines added to upstream's netstack.go, silently dropped
-#           during a conflict, still compiles. Per hunk and not per file,
-#           because a 7-hunk file pinned by 2 markers leaves 5 hunks unwatched.
-#           A marker must be UNIQUE in the patched file: a line occurring twice
-#           proves nothing about which copy survived, and boilerplate like
-#           `if err != nil {` is present upstream regardless of our patch.
-# [absent]  the mirror image, for hunks that only DELETE. Those have no added
-#           line to pin — and that is exactly the shape of the patch we lost
-#           once (`-//go:build !android`, nothing added). So pin the absence:
-#           if the line is back in the tree, our deletion was reverted.
+# [files]   повний numstat. Після rebase кожен шлях звідси має й далі бути в
+#           дельті — шлях, що зник, це патч, який викинули.
+# [markers] ОДИН буквальний рядок на hunk, для файлів, які ВЖЕ ІСНУЮТЬ в upstream
+#           на base. Цілком новий файл або виживає весь, або зникає з [files],
+#           тож маркер йому не потрібен. Небезпечний випадок — протилежний:
+#           +76 рядків, доданих до upstream'ового netstack.go, тихо викинуті під
+#           час конфлікту, і все компілюється. На hunk, а не на файл, бо файл із
+#           7 hunk'ів, закріплений 2 маркерами, лишає 5 hunk'ів без нагляду.
+#           Маркер має бути УНІКАЛЬНИМ у пропатченому файлі: рядок, що трапляється
+#           двічі, нічого не доводить про те, яка копія вижила, а шаблонне
+#           `if err != nil {` є в upstream незалежно від нашого патчу.
+# [absent]  дзеркальне відображення, для hunk'ів, які лише ВИДАЛЯЮТЬ. У них немає
+#           доданого рядка, за який можна зачепитись, — і саме такої форми патч
+#           ми одного разу втратили (`-//go:build !android`, нічого не додано).
+#           Тож закріплюємо відсутність: якщо рядок знову в дереві, наше
+#           видалення відкотилося.
 gen_manifest() {
     local base="$1" head="$2"
     local base_name
@@ -138,9 +140,9 @@ gen_manifest() {
     git diff --no-renames --numstat "$base..$head" | cut -f3 | while IFS= read -r f; do
         git cat-file -e "$base:$f" 2>/dev/null || continue
         git cat-file -e "$head:$f" 2>/dev/null || continue
-        # First input: the patched file, to count occurrences. Second: its diff.
-        # The path goes through the environment for the same reason the marker
-        # does in line_present() — awk expands backslash escapes in -v values.
+        # Перший вхід — пропатчений файл, щоб порахувати входження. Другий — його
+        # diff. Шлях іде через оточення з тієї ж причини, що й маркер у
+        # line_present(): awk розгортає backslash-екранування у значеннях -v.
         F="$f" awk '
             function emit() {
                 if (add != "") print "M\t" f "\t" add
@@ -179,14 +181,14 @@ gen_manifest() {
     rm -f "$mk"
 }
 
-# line_present <file> <literal-line>
-# Whole-line match modulo leading indent — the same trimming gen_manifest does
-# when it picks the line. Substring matching (grep -F) is not enough: our
-# build-tag patches SHORTEN the tag, so the fork line is a literal prefix of
-# upstream's and grep would report a hit on an unpatched file.
-# The line goes through the environment, never through awk -v: awk expands
-# backslash escapes in -v values, and Go source lines carry \n inside string
-# literals.
+# line_present <файл> <буквальний-рядок>
+# Збіг цілого рядка з точністю до початкового відступу — те саме обрізання, що
+# робить gen_manifest, обираючи рядок. Підрядкового збігу (grep -F) замало: наші
+# патчі build-тегів СКОРОЧУЮТЬ тег, тож рядок форку — буквальний префікс
+# upstream'ового, і grep доповів би про збіг на непропатченому файлі.
+# Рядок іде через оточення, ніколи через awk -v: awk розгортає backslash-
+# екранування у значеннях -v, а рядки Go-коду несуть \n усередині рядкових
+# літералів.
 line_present() {
     [ -f "$1" ] || return 1
     MARKER="$2" awk '
@@ -195,12 +197,12 @@ line_present() {
         END { exit !found }' "$1"
 }
 
-# verify_manifest <base-ref> <manifest-path>
-# Exit 0 = every patch accounted for, 1 = something was lost.
+# verify_manifest <base-ref> <шлях-до-маніфесту>
+# Вихід 0 = кожен патч на місці, 1 = щось втрачено.
 verify_manifest() {
     local base="$1" mf="$2"
     if [ ! -f "$mf" ]; then
-        echo "  ! манифеста нет ($mf) — scripts/android.sh manifest --write"
+        echo "  ! маніфесту немає ($mf) — scripts/android.sh manifest --write"
         return 0
     fi
 
@@ -229,10 +231,10 @@ verify_manifest() {
             expected["$p"]=1
             seen=$((seen + 1))
             if [ -z "${act_add[$p]+x}" ]; then
-                echo "  ✗ патч потерян целиком: $p"
+                echo "  ✗ патч втрачено цілком: $p"
                 lost=$((lost + 1))
             elif [ "${act_add[$p]}" != "$a" ] || [ "${act_del[$p]}" != "$d" ]; then
-                # Upstream drifts legitimately; this is information, not a failure.
+                # Upstream законно дрейфує; це інформація, а не провал.
                 drifted=$((drifted + 1))
             fi
         elif [ "$section" = "markers" ]; then
@@ -240,8 +242,8 @@ verify_manifest() {
             local marker="${line#*$'\t'}"
             [ -n "$marker" ] || continue
             if ! line_present "$p" "$marker"; then
-                echo "  ✗ кусок патча пропал внутри файла: $p"
-                echo "      ожидалась строка: $marker"
+                echo "  ✗ шматок патчу зник усередині файлу: $p"
+                echo "      очікувався рядок: $marker"
                 lost=$((lost + 1))
             fi
         elif [ "$section" = "absent" ]; then
@@ -249,8 +251,8 @@ verify_manifest() {
             local gone="${line#*$'\t'}"
             [ -n "$gone" ] || continue
             if line_present "$p" "$gone"; then
-                echo "  ✗ удаление откатилось: $p"
-                echo "      строка снова на месте: $gone"
+                echo "  ✗ видалення відкотилося: $p"
+                echo "      рядок знову на місці: $gone"
                 lost=$((lost + 1))
             fi
         fi
@@ -262,25 +264,25 @@ verify_manifest() {
     done
 
     if [ "$lost" -gt 0 ]; then
-        echo "  ✗ манифест: потеряно $lost из $seen"
+        echo "  ✗ маніфест: втрачено $lost із $seen"
         return 1
     fi
-    local note="манифест ✓ ($seen файлов"
-    [ "$drifted" -gt 0 ] && note="$note, у $drifted разъехались строки"
-    [ "$newfiles" -gt 0 ] && note="$note, +$newfiles вне манифеста"
+    local note="маніфест ✓ ($seen файлів"
+    [ "$drifted" -gt 0 ] && note="$note, у $drifted роз'їхалися рядки"
+    [ "$newfiles" -gt 0 ] && note="$note, +$newfiles поза маніфестом"
     echo "  ${note})"
     return 0
 }
 
-# --- Commands ---
+# --- Команди ---
 
 cmd_check() {
     local arch="${1:-arm64}"
     set_arch "$arch"
     export CGO_ENABLED=0
     local tags=$(get_build_tags)
-    echo "Checking android/$GOARCH..."
-    ./tool/go vet -tags="$tags" ./cmd/tailscaled ./cmd/tailscale
+    echo "Перевіряю android/$GOARCH..."
+    ./tool/go vet -tags="$tags" ./cmd/tailscaled ./cmd/tailscale ./util/osuser ./ssh/tailssh ./net/dns ./util/linuxfw ./hostinfo ./paths
     ./tool/go build -tags="$tags" -o /dev/null -trimpath ./cmd/tailscaled
     ./tool/go build -tags="$tags" -o /dev/null -trimpath ./cmd/tailscale
     echo "✓ OK"
@@ -297,27 +299,27 @@ cmd_build() {
             *)             break ;;
         esac
     done
-    [ "$#" -eq 0 ] && { echo "Usage: $0 build [--pre] [--upx] [--nocgo] [--allow-dirty] <arm|arm64|amd64>"; exit 1; }
+    [ "$#" -eq 0 ] && { echo "Використання: $0 build [--pre] [--upx] [--nocgo] [--allow-dirty] <arm|arm64|amd64>"; exit 1; }
 
     set_arch "$1"
 
-    # Версия приходит из mkversion (build_dist.sh shellvars) и выглядит как
-    # 1.102.4-5-tde9187c6a: тег, расстояние, коммит. Суффикса -dirty там нет
-    # никогда — mkversion грязь не отражает, так что грепать ldflags бесполезно.
-    # Единственный свидетель того, что бинарь соответствует коммиту, — само дерево.
-    # Untracked считаем грязью осознанно: лишний .go в пакете компилируется
-    # наравне с остальными, а git describe его не замечает.
-    # Демон ходит root'ом и откатывается сравнением бинарей — это гейт, не предупреждение.
-    # Стоит до setup_ndk: на грязном дереве NDK качать незачем.
+    # Версія приходить із mkversion (build_dist.sh shellvars) і виглядає як
+    # 1.102.4-5-tde9187c6a: тег, відстань, коміт. Суфікса -dirty там немає
+    # ніколи — mkversion бруд не відображає, тож грепати ldflags марно.
+    # Єдиний свідок того, що бінарник відповідає коміту, — саме дерево.
+    # Untracked вважаємо брудом свідомо: зайвий .go у пакеті компілюється
+    # нарівні з рештою, а git describe його не помічає.
+    # Демон ходить root'ом і відкочується порівнянням бінарників — це гейт, а не
+    # попередження. Стоїть до setup_ndk: на брудному дереві NDK качати нема чого.
     if [ -z "$ALLOW_DIRTY" ]; then
         local dirt n
         dirt=$(git status --porcelain 2>/dev/null) || dirt=""
         if [ -n "$dirt" ]; then
             n=$(printf '%s\n' "$dirt" | wc -l)
-            echo "✗ дерево грязное — бинарь не будет соответствовать $(git rev-parse --short HEAD 2>/dev/null || echo '?') ($n путей):"
+            echo "✗ дерево брудне — бінарник не відповідатиме $(git rev-parse --short HEAD 2>/dev/null || echo '?') ($n шляхів):"
             printf '%s\n' "$dirt" | sed -n '1,5s/^/    /p'
-            if [ "$n" -gt 5 ]; then echo "    … и ещё $((n - 5))"; fi
-            echo "  Закоммить или спрячь; --allow-dirty если это осознанно."
+            if [ "$n" -gt 5 ]; then echo "    … і ще $((n - 5))"; fi
+            echo "  Закоміть або сховай; --allow-dirty, якщо це свідомо."
             exit 1
         fi
     fi
@@ -336,7 +338,7 @@ cmd_build() {
     mkdir -p ./dist
     ./tool/go build -tags="$tags" -ldflags="$ldflags" -o "./dist/tailscaled.${GOARCH}" -trimpath ./cmd/tailscaled
     chmod +x "./dist/tailscaled.${GOARCH}"
-    echo "Built: dist/tailscaled.${GOARCH} ($(du -h "./dist/tailscaled.${GOARCH}" | cut -f1))"
+    echo "Зібрано: dist/tailscaled.${GOARCH} ($(du -h "./dist/tailscaled.${GOARCH}" | cut -f1))"
 
     if [ -n "$USE_UPX" ]; then compress "./dist/tailscaled.${GOARCH}"; fi
 }
@@ -349,7 +351,7 @@ cmd_manifest() {
     local base_commit
     base_commit=$(find_base_commit "$from")
     if [ -z "$base_commit" ]; then
-        echo "Cannot find base commit for $from"; exit 1
+        echo "Не знайдено базовий коміт для $from"; exit 1
     fi
 
     if [ -z "$write" ]; then
@@ -362,8 +364,8 @@ cmd_manifest() {
     nf=$(awk '/^\[files\]/{f=1;next} /^\[markers\]/{f=0} f&&NF' "$MANIFEST_REL" | wc -l)
     nm=$(awk '/^\[markers\]/{m=1;next} /^\[absent\]/{m=0} m&&NF' "$MANIFEST_REL" | wc -l)
     na=$(awk '/^\[absent\]/{a=1;next} a&&NF' "$MANIFEST_REL" | wc -l)
-    echo "✓ $MANIFEST_REL: $nf файлов, $nm маркеров, $na удалений (база $from)"
-    echo "  Манифест сам входит в дельту — после коммита перегенерируй ещё раз."
+    echo "✓ $MANIFEST_REL: $nf файлів, $nm маркерів, $na видалень (база $from)"
+    echo "  Маніфест сам входить у дельту — після коміту перегенеруй ще раз."
 }
 
 cmd_verify() {
@@ -371,8 +373,8 @@ cmd_verify() {
     if [ -z "$base" ]; then
         base=$(find_base_commit "v$(cat VERSION.txt)")
     fi
-    [ -n "$base" ] || { echo "Cannot resolve base"; exit 1; }
-    echo "Проверка дельты против $base:"
+    [ -n "$base" ] || { echo "Не вдалося визначити базу"; exit 1; }
+    echo "Перевірка дельти проти $base:"
     verify_manifest "$base" "$MANIFEST_REL"
 }
 
@@ -395,16 +397,16 @@ cmd_compat() {
     enable_rerere
     local tmp="/tmp/tailscale-compat-$$"
 
-    # The manifest is taken from the real repo, not from the test worktree: if a
-    # cherry-pick drops the manifest itself we still want to check against it.
+    # Маніфест береться зі справжнього репозиторію, а не з тестового дерева:
+    # якщо cherry-pick викине сам маніфест, ми все одно хочемо звірятися з ним.
     local manifest_copy="/tmp/fork-manifest-$$.txt"
     if [ -f "$repo_root/$MANIFEST_REL" ]; then
         cp "$repo_root/$MANIFEST_REL" "$manifest_copy"
     fi
     trap 'rm -rf "/tmp/tailscale-compat-$$" "/tmp/fork-manifest-$$.txt"' EXIT
 
-    echo "Base: $from (from VERSION.txt)"
-    echo "Cloning to $tmp..."
+    echo "База: $from (з VERSION.txt)"
+    echo "Клоную в $tmp..."
     clone_shared "$repo_root" "$tmp"
     cd "$tmp"
 
@@ -418,15 +420,15 @@ cmd_compat() {
     local base_commit
     base_commit=$(find_base_commit "$from")
     if [ -z "$base_commit" ]; then
-        echo "Cannot find base commit for $from"
+        echo "Не знайдено базовий коміт для $from"
         rm -rf "$tmp" "$manifest_copy"
         exit 1
     fi
 
-    # Default: replay the real commits, one by one, exactly as CI does. A
-    # conflict then names the patch that conflicts instead of naming "the
-    # android patch", and a patch that stops applying is a visible event.
-    # --squash keeps the old single-synthetic-commit behaviour.
+    # Типово: переграти справжні коміти по одному, точно як це робить CI.
+    # Конфлікт тоді називає патч, який конфліктує, замість «android-патчу»,
+    # а патч, що перестав застосовуватись, — видима подія.
+    # --squash зберігає стару поведінку з одним синтетичним комітом.
     local patch_commit=""
     if [ -n "$squash" ]; then
         git checkout -q -b android-patch HEAD
@@ -435,9 +437,10 @@ cmd_compat() {
         patch_commit=$(git rev-parse HEAD)
     fi
 
-    # Upstream tags only (our own -vau/-android tags are not upstream releases).
-    # Default is stable; --rc is the early-warning pass over -pre/-rc tags, run
-    # weeks before the stable tag exists so moving day has no surprises.
+    # Лише upstream-теги (наші власні -vau/-android теги — не upstream-релізи).
+    # Типово — стабільні; --rc це раннє попередження по -pre/-rc тегах, яке
+    # запускається за тижні до появи стабільного тегу, щоб день переїзду не
+    # приніс сюрпризів.
     local tags all
     all=$(git tag -l 'v[0-9]*' --sort=version:refname | grep -v "android" | grep -v -- "-vau" || true)
     if [ -n "$rc_only" ]; then
@@ -445,17 +448,19 @@ cmd_compat() {
     else
         all=$(printf '%s\n' "$all" | grep -v -- '-' || true)
     fi
-    # Порядок версий, а не порядок строк. Как строка "v1.61.0-pre" больше
-    # "v1.102.4" — на третьем символе 6 бьёт 1, — и прогон --rc уходил
-    # переигрывать два десятка тегов старше нашей же базы. vnum() снимает v,
-    # отбрасывает -pre/-rc и сворачивает остаток в число, где 1.61.0 стоит ниже
-    # 1.102.4. Сортировка на входе (--sort=version:refname) здесь не помогает:
-    # фильтр сравнивает заново и по-своему.
+    # Порядок версій, а не порядок рядків. Як рядок «v1.61.0-pre» більший за
+    # «v1.102.4» — на третьому символі 6 б'є 1, — і прогін --rc ішов
+    # перегравати два десятки тегів, старших за нашу ж базу. vnum() знімає v,
+    # відкидає -pre/-rc і згортає решту в число, де 1.61.0 стоїть нижче за
+    # 1.102.4. Сортування на вході (--sort=version:refname) тут не допомагає:
+    # фільтр порівнює наново і по-своєму.
     local vnum='function vnum(t,  p) { sub(/^v/, "", t); sub(/-.*$/, "", t); split(t, p, "."); return p[1] * 1000000 + p[2] * 1000 + p[3] }'
     if [ -n "$to" ]; then
         tags=$(printf '%s\n' "$all" | awk -v f="$from" -v t="$to" "$vnum"' vnum($0) > vnum(f) && vnum($0) <= vnum(t)')
     else
-        tags=$(printf '%s\n' "$all" | awk -v f="$from" "$vnum"' vnum($0) > vnum(f)' | head -30)
+        # Без stop-tag беремо лише найближчі теги: кожен — це клон + cherry-pick
+        # + маніфест, а RC-watch у CI ганяє це щодня.
+        tags=$(printf '%s\n' "$all" | awk -v f="$from" "$vnum"' vnum($0) > vnum(f)' | head -10)
     fi
 
     if [ -z "$tags" ]; then
@@ -482,7 +487,7 @@ cmd_compat() {
             local mf_out="" bad="" tail=""
             if [ -f "$manifest_copy" ]; then
                 if mf_out=$(verify_manifest "$tag" "$manifest_copy"); then :; else
-                    bad="1"; tail=" [манифест]"
+                    bad="1"; tail=" [маніфест]"
                 fi
             fi
             if [ -n "$do_check" ] || [ -n "$do_build" ]; then
@@ -547,34 +552,34 @@ cmd_update() {
     original_branch=$(git rev-parse --abbrev-ref HEAD)
     enable_rerere
 
-    # Ensure upstream remote
+    # Переконатися, що є remote upstream
     if ! git remote get-url upstream &>/dev/null; then
         git remote add upstream https://github.com/tailscale/tailscale.git
     fi
     git fetch upstream --tags --quiet
 
-    # Determine target
+    # Визначити ціль
     if [ -z "$target" ]; then
         target=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | grep -v -- '-' | head -1)
     fi
     if [[ ! "$target" =~ ^v ]]; then target="v${target}"; fi
 
     if ! git rev-parse "$target" >/dev/null 2>&1; then
-        echo "Tag $target not found"; exit 1
+        echo "Тег $target не знайдено"; exit 1
     fi
 
     if [ "$from" = "$target" ]; then
-        echo "Already at $target"; exit 0
+        echo "Уже на $target"; exit 0
     fi
 
-    echo "Update: $from → $target"
+    echo "Оновлення: $from → $target"
 
     local head_sha
     head_sha=$(git rev-parse HEAD)
     local base_commit
     base_commit=$(find_base_commit "$from")
     if [ -z "$base_commit" ]; then
-        echo "Cannot find base commit for $from"; exit 1
+        echo "Не знайдено базовий коміт для $from"; exit 1
     fi
 
     local manifest_copy="/tmp/fork-manifest-$$.txt"
@@ -584,7 +589,7 @@ cmd_update() {
     trap 'rm -rf "/tmp/fork-manifest-$$.txt" "/tmp/tailscale-update-$$"' EXIT
 
     if [ -n "$dry_run" ]; then
-        echo "[dry-run] Would replay $(git rev-list --count "$base_commit..$head_sha") patch commit(s) onto $target"
+        echo "[dry-run] Переграв би $(git rev-list --count "$base_commit..$head_sha") коміт(ів) патчу на $target"
         local tmp="/tmp/tailscale-update-$$"
         clone_shared "$repo_root" "$tmp"
         cd "$tmp"
@@ -604,10 +609,10 @@ cmd_update() {
             git cherry-pick --empty=drop "$base_commit..$head_sha" >/dev/null 2>&1 && ok="1"
         fi
         if [ -n "$ok" ]; then
-            echo "✓ Would apply cleanly"
+            echo "✓ Застосувався б чисто"
             [ -f "$manifest_copy" ] && verify_manifest "$target" "$manifest_copy" || true
         else
-            echo "✗ Would have conflicts:"
+            echo "✗ Були б конфлікти:"
             git diff --name-only --diff-filter=U 2>/dev/null | sed 's/^/  /'
             git cherry-pick --abort 2>/dev/null || git cherry-pick --quit 2>/dev/null || true
         fi
@@ -618,7 +623,7 @@ cmd_update() {
 
     local new_branch="${target#v}-android-dev"
     if git rev-parse --verify "$new_branch" >/dev/null 2>&1; then
-        echo "Branch $new_branch already exists. Delete it first or use a different target."
+        echo "Гілка $new_branch уже існує. Спершу видали її або обери іншу ціль."
         exit 1
     fi
 
@@ -656,19 +661,19 @@ $coauthors"
     fi
 
     if [ -z "$ok" ]; then
-        echo "✗ Conflicts on:"
+        echo "✗ Конфлікти в:"
         git diff --name-only --diff-filter=U 2>/dev/null | sed 's/^/  /'
         echo ""
-        echo "Resolve with:"
-        echo "  edit conflicted files"
-        echo "  git add <file>"
+        echo "Розв'язати так:"
+        echo "  відредагувати конфліктні файли"
+        echo "  git add <файл>"
         echo "  git cherry-pick --continue"
         echo ""
-        echo "Then, before trusting it:"
+        echo "Потім, перш ніж довіряти:"
         echo "  scripts/android.sh verify $target"
         echo "  scripts/android.sh build --nocgo arm64"
         echo ""
-        echo "Or abort:"
+        echo "Або скасувати:"
         echo "  git cherry-pick --abort"
         echo "  git checkout $original_branch"
         echo "  git branch -D $new_branch${squash:+ _update_tmp}"
@@ -677,17 +682,17 @@ $coauthors"
     fi
 
     [ -n "$squash" ] && git branch -q -D _update_tmp
-    echo "✓ Cherry-pick прошёл, ветка: $new_branch"
+    echo "✓ Cherry-pick пройшов, гілка: $new_branch"
 
-    # Gate 1: is every patch still in there? git said "applied", which is not
-    # the same claim.
+    # Гейт 1: чи кожен патч досі всередині? git сказав «застосовано», а це не
+    # те саме твердження.
     echo ""
-    echo "Манифест:"
+    echo "Маніфест:"
     if [ -f "$manifest_copy" ]; then
         if ! verify_manifest "$target" "$manifest_copy"; then
             echo ""
-            echo "✗ Патч применился, но часть его отсутствует. Не собираю."
-            echo "  Смотри список выше, восстанови куски, затем:"
+            echo "✗ Патч застосувався, але частини його бракує. Не збираю."
+            echo "  Дивись список вище, віднови шматки, потім:"
             echo "    scripts/android.sh verify $target"
             rm -f "$manifest_copy"
             exit 1
@@ -695,32 +700,32 @@ $coauthors"
     fi
     rm -f "$manifest_copy"
 
-    # Gate 2: does it build? Advice that a human has to remember to follow is
-    # not a gate, and this is the step that was skipped last time.
+    # Гейт 2: чи збирається? Порада, про яку людина має пам'ятати, — не гейт,
+    # і саме цей крок минулого разу пропустили.
     if [ -n "$no_build" ]; then
         echo ""
-        echo "! сборка пропущена (--no-build) — ветка НЕ проверена"
+        echo "! збірку пропущено (--no-build) — гілку НЕ перевірено"
         echo "  scripts/android.sh build --nocgo arm64"
         return
     fi
     echo ""
-    echo "Сборка android/arm64:"
+    echo "Збірка android/arm64:"
     if ! "$0" build --nocgo arm64; then
         echo ""
-        echo "✗ Не собирается на $target. Ветка $new_branch оставлена как есть."
+        echo "✗ Не збирається на $target. Гілку $new_branch залишено як є."
         exit 1
     fi
 
     echo ""
-    echo "✓ $target: патч на месте, собирается. Ты на ветке $new_branch."
+    echo "✓ $target: патч на місці, збирається. Ти на гілці $new_branch."
     echo ""
-    echo "Дальше — только руками:"
-    echo "  на телефоне: вход под выдуманным именем отклоняется (H1),"
-    echo "               shell@ получает свои группы (H2), HOME не каталог демона (H3)"
-    echo "  git checkout $original_branch  — вернуться"
+    echo "Далі — лише руками:"
+    echo "  на телефоні: вхід під вигаданим іменем відхиляється (H1),"
+    echo "               shell@ отримує свої групи (H2), HOME не каталог демона (H3)"
+    echo "  git checkout $original_branch  — повернутися"
 }
 
-# --- Main ---
+# --- Головна частина ---
 
 case "${1:-}" in
     build)    shift; cmd_build "$@" ;;
@@ -729,5 +734,5 @@ case "${1:-}" in
     update)   shift; cmd_update "$@" ;;
     manifest) shift; cmd_manifest "$@" ;;
     verify)   shift; cmd_verify "$@" ;;
-    *)        echo "Usage: $0 {build|check|compat|update|manifest|verify} [options]"; exit 1 ;;
+    *)        echo "Використання: $0 {build|check|compat|update|manifest|verify} [опції]"; exit 1 ;;
 esac

@@ -1,30 +1,30 @@
 name: "upstream-watch"
 
-# Watches tailscale/tailscale for a newer stable release and tries to move our
-# Android patch onto it.
+# Стежить за tailscale/tailscale на предмет новішого стабільного релізу і
+# пробує перенести на нього наш Android-патч.
 #
-# What it does NOT do, deliberately:
-#   * it never pushes to the working branch and never publishes a release. A
-#     root daemon that keeps a phone reachable is not something to swap on a
-#     schedule; the human step is one click on the existing release workflow.
-#   * it never resolves a conflict. A cherry-pick that does not apply cleanly
-#     means upstream changed code our patch also changes — DNS, routing, SSH,
-#     the exact places the audit is about. That is a review, not a merge.
+# Чого він НЕ робить, навмисно:
+#   * ніколи не пушить у робочу гілку і ніколи не публікує реліз. Root-демон,
+#     що тримає телефон досяжним, — не те, що міняють за розкладом; людський
+#     крок — один клік у наявному release-workflow.
+#   * ніколи не розв'язує конфлікт. Cherry-pick, що не лягає чисто, означає,
+#     що upstream змінив код, який змінює і наш патч, — DNS, маршрутизація,
+#     SSH, саме ті місця, про які весь аудит. Це review, а не merge.
 #
-# So the automation ends at "a branch that builds, with a PR describing it" or
-# "an issue naming the conflicted files".
+# Тож автоматика закінчується на «гілка, що збирається, з PR, який її описує»
+# або «issue з іменами конфліктних файлів».
 #
-# A second job (rc-watch) runs the same replay against upstream *pre-release*
-# tags and can only ever open an issue. The point is to find out during the RC
-# window that upstream broke us, not to move anything.
+# Друга job (rc-watch) ганяє той самий replay по upstream'овим *pre-release*
+# тегам і може лише відкрити issue. Мета — дізнатися ще у вікні RC, що upstream
+# нас зламав, а не щось переносити.
 #
-# Values that come from outside (the upstream tag name) are passed through env:
-# and used as "$VARS" in shell, never interpolated into the script text — this
-# job holds contents/pull-requests/issues write.
+# Значення ззовні (ім'я upstream-тегу) передаються через env: і використовуються
+# як "$VARS" у shell, ніколи не інтерполюються в текст скрипту — ця job має
+# права contents/pull-requests/issues write.
 
 on:
   schedule:
-    - cron: "17 6 * * *"   # daily, early morning UTC
+    - cron: "17 6 * * *"   # щодня, рано вранці UTC
   workflow_dispatch:
 
 permissions:
@@ -47,29 +47,29 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
-      - name: Compare our base with the latest upstream stable
+      - name: Порівняти нашу базу з останнім стабільним upstream
         id: cmp
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           CUR="v$(cat VERSION.txt)"
-          # Newest non-prerelease tag upstream: -pre builds are not what a
-          # phone should end up running.
+          # Найновіший не-prerelease тег upstream: -pre збірки — не те, що має
+          # опинитися на телефоні.
           NEW=$(gh release list -R tailscale/tailscale -L 1 --exclude-pre-releases \
                   --json tagName --jq '.[0].tagName')
           case "$NEW" in
             v[0-9]*) : ;;
-            *) echo "::error::unexpected upstream tag: $NEW"; exit 1 ;;
+            *) echo "::error::несподіваний upstream-тег: $NEW"; exit 1 ;;
           esac
           {
             echo "current=$CUR"
             echo "latest=$NEW"
             if [ "$CUR" = "$NEW" ]; then echo "up_to_date=true"; else echo "up_to_date=false"; fi
           } >> "$GITHUB_OUTPUT"
-          echo "our base: $CUR | upstream latest: $NEW"
+          echo "наша база: $CUR | останній upstream: $NEW"
 
-      - name: Try moving the patch onto the new tag
+      - name: Спробувати перенести патч на новий тег
         if: steps.cmp.outputs.up_to_date == 'false'
         id: rebase
         env:
@@ -84,29 +84,29 @@ jobs:
 
           BRANCH="auto/rebase-$NEW"
           git checkout -q -B "$BRANCH" "refs/tags/$NEW"
-          # Our patch is everything between the upstream tag we sit on and the
-          # tip of the working branch.
+          # Наш патч — усе між upstream-тегом, на якому ми сидимо, і вершиною
+          # робочої гілки.
           if git cherry-pick "refs/tags/$CUR..origin/$GITHUB_REF_NAME" >/tmp/cp.log 2>&1; then
             { echo "clean=true"; echo "branch=$BRANCH"; } >> "$GITHUB_OUTPUT"
           else
             echo "clean=false" >> "$GITHUB_OUTPUT"
             git diff --name-only --diff-filter=U > /tmp/conflicts.txt || true
             git cherry-pick --abort || true
-            echo "conflicts:"; cat /tmp/conflicts.txt
+            echo "конфлікти:"; cat /tmp/conflicts.txt
           fi
 
-      - name: Build the result
+      - name: Зібрати результат
         if: steps.rebase.outputs.clean == 'true'
         id: build
         run: |
           set -euo pipefail
-          # Build only. The device tests (util/osuser) are android/arm64 and
-          # cannot execute on this runner, so a green build here is NOT proof
-          # the patch still behaves — that check belongs on the phone.
+          # Лише збірка. Тести на пристрої (util/osuser) — android/arm64 і на
+          # цьому раннері не виконуються, тож зелена збірка тут НЕ доводить, що
+          # патч досі поводиться правильно — ця перевірка належить телефону.
           ./scripts/android.sh build --nocgo arm64
           ls -lh dist/
 
-      - name: Open a PR with the rebased patch
+      - name: Відкрити PR з перенесеним патчем
         if: steps.rebase.outputs.clean == 'true' && steps.build.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,64 +117,64 @@ jobs:
           set -euo pipefail
           git push -f origin "$BRANCH"
           if gh pr view "$BRANCH" >/dev/null 2>&1; then
-            echo "PR already open"; exit 0
+            echo "PR уже відкрито"; exit 0
           fi
           {
-            echo "Автоматический перенос патча на upstream \`$NEW\`."
+            echo "Автоматичний перенос патчу на upstream \`$NEW\`."
             echo
-            echo "Проверено здесь: cherry-pick без конфликтов, сборка android/arm64 проходит."
-            echo "НЕ проверено: поведение на устройстве. Тесты util/osuser — android/arm64,"
-            echo "на раннере они не запускаются. H1/H2/H3 проверяются только на телефоне:"
-            echo "вход под выдуманным именем должен отклоняться, shell@ получать свои группы,"
-            echo "HOME не должен быть каталогом демона."
+            echo "Перевірено тут: cherry-pick без конфліктів, збірка android/arm64 проходить."
+            echo "НЕ перевірено: поведінка на пристрої. Тести util/osuser — android/arm64,"
+            echo "на раннері вони не запускаються. H1/H2/H3 перевіряються лише на телефоні:"
+            echo "вхід під вигаданим іменем має відхилятися, shell@ — отримувати свої групи,"
+            echo "HOME не має бути каталогом демона."
             echo
-            echo "Дальше вручную: слить PR, запустить build_android.yml, затем на телефоне"
-            echo "нажать «Оновлення → Встановити» и перезагрузиться."
+            echo "Далі вручну: злити PR, запустити build_android.yml, потім на телефоні"
+            echo "натиснути «Оновлення → Встановити» і перезавантажитись."
           } > /tmp/pr-body.md
           gh pr create --head "$BRANCH" --base "$BASE" \
-            --title "upstream $NEW: patch applies cleanly, builds" \
+            --title "upstream $NEW: патч лягає чисто, збирається" \
             --body-file /tmp/pr-body.md
 
-      - name: Report a conflict instead of guessing
+      - name: Повідомити про конфлікт замість вгадувати
         if: steps.rebase.outputs.clean == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           NEW: ${{ steps.cmp.outputs.latest }}
         run: |
           set -euo pipefail
-          TITLE="upstream $NEW: патч не переносится автоматически"
+          TITLE="upstream $NEW: патч не переноситься автоматично"
           if gh issue list --search "$TITLE in:title" --json number --jq '.[0].number' | grep -q .; then
-            echo "issue already open"; exit 0
+            echo "issue уже відкрито"; exit 0
           fi
           {
-            echo "Cherry-pick нашего патча на \`$NEW\` дал конфликты:"
+            echo "Cherry-pick нашого патчу на \`$NEW\` дав конфлікти:"
             echo
             echo '```'
-            cat /tmp/conflicts.txt 2>/dev/null || echo "(список не сохранился)"
+            cat /tmp/conflicts.txt 2>/dev/null || echo "(список не зберігся)"
             echo '```'
             echo
-            echo "Эти файлы патч и апстрим меняют одновременно. Разрешать автоматически нельзя:"
-            echo "именно там живут DNS, маршрутизация и SSH — те места, о которых весь аудит."
+            echo "Ці файли патч і upstream змінюють одночасно. Розв'язувати автоматично не можна:"
+            echo "саме там живуть DNS, маршрутизація і SSH — ті місця, про які весь аудит."
             echo
-            echo "Локально: scripts/android.sh update $NEW, разрешить, собрать, проверить на телефоне."
+            echo "Локально: scripts/android.sh update $NEW, розв'язати, зібрати, перевірити на телефоні."
           } > /tmp/issue-body.md
           gh issue create --title "$TITLE" --body-file /tmp/issue-body.md
 
-  # Same replay, two weeks early: upstream release candidates.
+  # Той самий replay, на два тижні раніше: upstream'ові release candidate.
   #
-  # This job never calls `gh release list` — cmd_compat --rc picks the -pre tags
-  # out of the git tag list in its own clone. The stable watcher above stays the
-  # only owner of that path.
+  # Ця job ніколи не викликає `gh release list` — cmd_compat --rc сама вибирає
+  # -pre теги зі списку git-тегів у власному клоні. Стабільний watcher вище
+  # лишається єдиним власником того шляху.
   rc-watch:
     runs-on: ubuntu-latest
-    permissions:        # narrower than the workflow default: this job pushes nothing
+    permissions:        # вужче, ніж типово для workflow: ця job нічого не пушить
       contents: read
       issues: write
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0   # find_base_commit greps the whole log for the VERSION.txt commit
+          fetch-depth: 0   # find_base_commit грепає весь лог у пошуках коміту VERSION.txt
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -182,62 +182,62 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
-      - name: Replay the patch onto upstream release candidates
+      - name: Переграти патч на upstream'ові release candidate
         id: rc
         run: |
-          set -uo pipefail   # no -e: the exit code below is read, not obeyed
+          set -uo pipefail   # без -e: код виходу нижче читається, а не виконується
           if out=$(./scripts/android.sh compat --rc --check 2>&1); then rc=0; else rc=$?; fi
           printf '%s\n' "$out"
 
-          # compat exits 1 with this line when no -pre tag is newer than our
-          # base. That is the ordinary outcome on most days, not a failure.
+          # compat виходить з 1 і цим рядком, коли жоден -pre тег не новіший за
+          # нашу базу. Це звичайний результат більшості днів, а не провал.
           if printf '%s\n' "$out" | grep -q '^No tags found after'; then
-            echo "RC watch: пре-релизных тегов новее нашей базы нет." >> "$GITHUB_STEP_SUMMARY"
+            echo "RC watch: pre-release тегів, новіших за нашу базу, немає." >> "$GITHUB_STEP_SUMMARY"
             echo "failed=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "$rc" -ne 0 ]; then
-            echo "compat exited $rc without a tag list — script or network, not the patch" >&2
+            echo "compat вийшов з $rc без списку тегів — скрипт або мережа, не патч" >&2
             exit 1
           fi
 
-          # cmd_compat returns 0 whatever the verdict, so the tally is the only
-          # signal. An empty parse means the output format moved: fail loudly
-          # rather than read silence as "nothing broke".
+          # cmd_compat повертає 0 за будь-якого вердикту, тож підсумок — єдиний
+          # сигнал. Порожній парс означає, що формат виводу змінився: падаємо
+          # голосно, замість читати тишу як «нічого не зламалось».
           printf '%s\n' "$out" > /tmp/rc-out.txt
           FAILED=$(sed -n 's/^Passed: [0-9]*  Failed: \([0-9]*\)$/\1/p' /tmp/rc-out.txt)
           if [ -z "$FAILED" ]; then
-            echo "no 'Passed: N  Failed: M' line in compat output" >&2
+            echo "у виводі compat немає рядка 'Passed: N  Failed: M'" >&2
             exit 1
           fi
           echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
           echo "tag=$(sed -n 's/^✗ \([^ ]*\).*/\1/p' /tmp/rc-out.txt | tail -1)" >> "$GITHUB_OUTPUT"
           echo "RC watch: Failed: $FAILED" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Report an RC regression
+      - name: Повідомити про регресію в RC
         if: success() && steps.rc.outputs.failed != '' && steps.rc.outputs.failed != '0'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.rc.outputs.tag }}
         run: |
           set -euo pipefail
-          TITLE="upstream $TAG (RC): патч ломается заранее"
+          TITLE="upstream $TAG (RC): патч ламається заздалегідь"
           if gh issue list --search "$TITLE in:title" --json number --jq '.[0].number' | grep -q .; then
-            echo "issue already open"; exit 0
+            echo "issue уже відкрито"; exit 0
           fi
           {
-            echo "Прогон \`scripts/android.sh compat --rc --check\` на пре-релизных тегах:"
+            echo "Прогін \`scripts/android.sh compat --rc --check\` по pre-release тегах:"
             echo
             echo '```'
             cat /tmp/rc-out.txt
             echo '```'
             echo
-            echo "Строка с ✗ — это одно из трёх: конфликт cherry-pick, потеря куска патча"
-            echo "(манифест) или \`go vet\` после переноса. Первые два значат, что апстрим"
-            echo "тронул те же места, что и мы; третье — что патч применился, но код после"
-            echo "него не собирается."
+            echo "Рядок із ✗ — це одне з трьох: конфлікт cherry-pick, втрата шматка патчу"
+            echo "(маніфест) або \`go vet\` після переносу. Перші два означають, що upstream"
+            echo "зачепив ті самі місця, що й ми; третє — що патч застосувався, але код після"
+            echo "нього не збирається."
             echo
-            echo "Это ещё RC, а не релиз: время есть. Локально —"
-            echo "\`scripts/android.sh compat --rc --check\`, дальше \`update $TAG\`."
+            echo "Це ще RC, а не реліз: час є. Локально —"
+            echo "\`scripts/android.sh compat --rc --check\`, далі \`update $TAG\`."
           } > /tmp/rc-issue.md
           gh issue create --title "$TITLE" --body-file /tmp/rc-issue.md
