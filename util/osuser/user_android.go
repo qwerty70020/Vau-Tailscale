@@ -17,26 +17,28 @@ func init() {
 	overrideLookupFunc = androidLookup
 }
 
-// Absolute on purpose. tailscaled runs as root on this platform, and a PATH
-// lookup would let whoever owns a directory on PATH choose which binary root
-// executes — on a phone that PATH can easily be a terminal app's own prefix.
+// Абсолютний шлях навмисно. tailscaled на цій платформі працює як root, а пошук
+// через PATH дозволив би власнику будь-якого каталогу в PATH обирати, який
+// бінарник виконає root — на телефоні цей PATH легко може бути префіксом
+// термінального застосунку.
 const idBin = "/system/bin/id"
 
-// The only shell Android is guaranteed to ship, and one that exists before the
-// owner's first unlock. A nicer per-user shell (a terminal app's bash for an
-// app uid) needs the per-user environment work tracked as H3/C4 in
-// docs/vau/AUDIT.md; picking it up from PATH is what H5 is about.
+// Єдина оболонка, яку Android гарантовано постачає і яка існує ще до першого
+// розблокування власником. Приємніша оболонка для кожного користувача (bash
+// термінального застосунку для app-uid) потребує роботи над per-user
+// середовищем, що ведеться як H3/C4 у docs/vau/AUDIT.md; брати її з PATH —
+// саме те, про що H5.
 const defaultShell = "/system/bin/sh"
 
-// androidLookup resolves a user through the `id` command, because Android has
-// neither getent nor /etc/passwd.
+// androidLookup резолвить користувача через команду `id`, бо на Android немає
+// ні getent, ні /etc/passwd.
 //
-// An unknown name is an ERROR, never a fallback. Tailscale SSH takes the local
-// user a peer may become from the tailnet policy; if an unresolvable name
-// quietly became the daemon's own identity, every `users` entry in that policy
-// would effectively read "root". That is what this code used to do — its
-// fallback ran `id -u`, i.e. "who am I", because the old helper treated the
-// last argument as a default value instead of passing it to the command.
+// Невідоме ім'я — це ПОМИЛКА, ніколи не запасний варіант. Tailscale SSH бере
+// локального користувача, яким може стати peer, з політики tailnet; якби
+// нерозв'язне ім'я тихо ставало власною ідентичністю демона, кожен запис
+// `users` у тій політиці фактично читався б як "root". Саме так цей код колись
+// і робив — його fallback запускав `id -u`, тобто «хто я», бо старий помічник
+// трактував останній аргумент як типове значення замість передати його команді.
 func androidLookup(usernameOrUID string, wantShell bool) (*user.User, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -49,8 +51,9 @@ func androidLookup(usernameOrUID string, wantShell bool) (*user.User, string, er
 	if err != nil {
 		return nil, "", fmt.Errorf("osuser: no gid for user %q: %w", usernameOrUID, err)
 	}
-	// Only the display name may fall back: by this point the account is known
-	// to exist, so the worst case is showing the name we were handed.
+	// Запасний варіант допустимий лише для відображуваного імені: на цей момент
+	// обліковий запис уже точно існує, тож у найгіршому разі покажемо ім'я,
+	// яке нам передали.
 	username, err := idField(ctx, "-un", usernameOrUID)
 	if err != nil {
 		username = usernameOrUID
@@ -70,9 +73,9 @@ func androidLookup(usernameOrUID string, wantShell bool) (*user.User, string, er
 	}, shell, nil
 }
 
-// idField runs `id <flag> <user>` and returns its trimmed output. A non-zero
-// exit means the account does not exist, and that is reported rather than
-// papered over.
+// idField запускає `id <прапорець> <користувач>` і повертає обрізаний вивід.
+// Ненульовий код виходу означає, що облікового запису не існує, і про це
+// повідомляється, а не замовчується.
 func idField(ctx context.Context, flag, usernameOrUID string) (string, error) {
 	out, err := exec.CommandContext(ctx, idBin, flag, usernameOrUID).Output()
 	if err != nil {
@@ -85,13 +88,13 @@ func idField(ctx context.Context, flag, usernameOrUID string) (string, error) {
 	return v, nil
 }
 
-// androidHomeDir returns a home directory for uid.
+// androidHomeDir повертає домашній каталог для uid.
 //
-// An app uid gets its own app's home, which is what makes a single SSH entry
-// point possible: logging in as the terminal app's uid lands in the same place
-// its own shell would. Android has no per-user home directories for plain AIDs,
-// so everyone else gets "/" — anything else means handing out a directory the
-// session cannot read, which is what the daemon's own HOME used to do.
+// App-uid отримує дім власного застосунку — саме це робить можливою єдину точку
+// входу по SSH: вхід під uid термінального застосунку приводить туди ж, куди
+// і його власна оболонка. На Android немає per-user домашніх каталогів для
+// простих AID, тож усі інші отримують "/" — будь-що інше означало б видати
+// каталог, який сесія не може прочитати, як це колись робив власний HOME демона.
 func androidHomeDir(ctx context.Context, uid string) string {
 	if dir := appDataDirForUID(ctx, uid); dir != "" {
 		if h := dir + "/files/home"; isDir(h) {
@@ -111,16 +114,16 @@ func isDir(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// appDataDirForUID returns /data/data/<pkg> for an Android app uid, or "".
+// appDataDirForUID повертає /data/data/<pkg> для app-uid Android або "".
 //
-// The package manager is asked rather than the filesystem guessed: app uids are
-// assigned at install time and differ between handsets, so nothing may be
-// hardcoded. Before the owner's first unlock the directory name itself is
-// encrypted and this returns "" — a miss is normal here, not an error, and the
-// caller falls back to "/".
+// Питаємо менеджер пакетів, а не вгадуємо по файловій системі: app-uid
+// призначаються під час встановлення і різняться між телефонами, тож нічого
+// не можна зашивати. До першого розблокування власником саме ім'я каталогу
+// зашифроване, і функція повертає "" — промах тут нормальний, не помилка, і
+// той, хто викликає, відкочується до "/".
 func appDataDirForUID(ctx context.Context, uid string) string {
 	if n, err := strconv.Atoi(uid); err != nil || n < 10000 {
-		return "" // not an app uid; system AIDs have no data dir
+		return "" // не app-uid; системні AID не мають data-каталогу
 	}
 	out, err := exec.CommandContext(ctx, "/system/bin/pm", "list", "packages", "-U").Output()
 	if err != nil {

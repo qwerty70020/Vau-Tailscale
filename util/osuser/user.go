@@ -22,7 +22,7 @@ import (
 	"tailscale.com/version/distro"
 )
 
-// overrideLookupFunc is set by custom platform-specific implementations.
+// overrideLookupFunc задають платформно-специфічні реалізації (user_android.go).
 var overrideLookupFunc func(string, bool) (*user.User, string, error)
 
 // LookupByUIDWithShell is like os/user.LookupId but handles a few edge cases
@@ -80,7 +80,7 @@ func lookup(usernameOrUID string, std lookupStd, wantShell bool) (*user.User, st
 		return u, shell, err
 	}
 
-	// Android-specific lookup
+	// Android: свій lookup, бо немає ні getent, ні /etc/passwd
 	if runtime.GOOS == "android" && overrideLookupFunc != nil {
 		return overrideLookupFunc(usernameOrUID, wantShell)
 	}

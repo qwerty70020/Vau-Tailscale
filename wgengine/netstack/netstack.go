@@ -835,20 +835,18 @@ func (ns *Impl) isLoopbackPort(port uint16) bool {
 	return false
 }
 
-// handleDNSResponse intercepts DNS responses from netstack and rewrites the source
-// address back to the original DNS server that the client queried.
-// handleDNSQueryCopy processes a DNS query and sends the response back to the client.
-// This is called in a goroutine to avoid blocking the packet processing path.
+// handleDNSQueryCopy обробляє перехоплений DNS-запит і надсилає відповідь
+// клієнту. Викликається в goroutine, щоб не блокувати шлях обробки пакетів.
 func (ns *Impl) handleDNSQueryCopy(query []byte, src, dst netip.AddrPort, ipVersion uint8, proto ipproto.Proto) {
-	// Query Tailscale DNS with timeout
+	// Запит до DNS Tailscale з таймаутом
 	ctx, cancel := context.WithTimeout(ns.ctx, 5*time.Second)
 	defer cancel()
-	
+
 	protoStr := "udp"
 	if proto == ipproto.TCP {
 		protoStr = "tcp"
 	}
-	
+
 	resp, err := ns.dns.Query(ctx, query, protoStr, src)
 	if err != nil {
 		if debugPackets {
@@ -857,8 +855,8 @@ func (ns *Impl) handleDNSQueryCopy(query []byte, src, dst netip.AddrPort, ipVers
 		return
 	}
 
-	// Build response packet using packet.Generate
-	// Response goes FROM queried DNS server TO client
+	// Збираємо пакет відповіді через packet.Generate:
+	// вона йде ВІД опитаного DNS-сервера ДО клієнта
 	var respPacket []byte
 	switch ipVersion {
 	case 4:
@@ -886,13 +884,12 @@ func (ns *Impl) handleDNSQueryCopy(query []byte, src, dst netip.AddrPort, ipVers
 		return
 	}
 
-	// Inject response back to TUN
+	// Повертаємо відповідь назад у TUN
 	if err := ns.tundev.InjectInboundCopy(respPacket); err != nil && debugPackets {
 		ns.logf("DNS hijack inject failed: %v", err)
 	}
 }
 
-// buildUDPResponse4 builds an IPv4 UDP packet with the given parameters
 // handleLocalPackets is hooked into the tun datapath for packets leaving
 // the host and arriving at tailscaled. This method returns filter.DropSilently
 // to intercept a packet for handling, for instance traffic to quad-100.
@@ -902,14 +899,14 @@ func (ns *Impl) handleLocalPackets(p *packet.Parsed, t *tstun.Wrapper, gro *gro.
 		return filter.DropSilently, gro
 	}
 
-	// Hijack DNS queries to external servers if CorpDNS is enabled
+	// Перехоплюємо DNS-запити до зовнішніх серверів, якщо ввімкнено CorpDNS
 	if p.Dst.Port() == 53 && (p.IPProto == ipproto.UDP || p.IPProto == ipproto.TCP) {
 		dst := p.Dst.Addr()
-		// Skip hijacking for queries to Tailscale DNS itself
+		// Запити до самого DNS Tailscale не перехоплюємо
 		if dst != serviceIP && dst != serviceIPv6 {
-			// Only hijack if CorpDNS is enabled (--accept-dns=true)
+			// Лише коли ввімкнено CorpDNS (--accept-dns=true)
 			if ns.lb != nil && ns.lb.Prefs().CorpDNS() {
-				// Copy and process DNS query in goroutine
+				// Копіюємо запит і обробляємо в goroutine
 				if query := p.Payload(); len(query) > 0 {
 					queryCopy := make([]byte, len(query))
 					copy(queryCopy, query)

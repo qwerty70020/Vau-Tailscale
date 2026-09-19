@@ -20,17 +20,17 @@ import (
 // and if that fails, it will fall back to the user.GroupIds method.
 func GetGroupIds(user *user.User) ([]string, error) {
 	if runtime.GOOS == "android" {
-		// Two bugs lived in these three lines. `id -Gz` does not exist on
-		// Android at all (toybox: "Unknown option 'z'", verified on Android 16),
-		// and the command was run without a username, so it answered for the
-		// DAEMON — every SSH session got root's groups instead of the user's.
-		// The fallback then returned a hardcoded {"0"}, quietly granting group
-		// root to whoever asked.
+		// У цих трьох рядках жили два баги. `id -Gz` на Android не існує
+		// взагалі (toybox: "Unknown option 'z'", перевірено на Android 16), а
+		// команда запускалась без імені користувача, тож відповідала за
+		// ДЕМОНА — кожна SSH-сесія отримувала групи root замість своїх.
+		// Fallback потім повертав зашитий {"0"}, тихо видаючи групу root
+		// будь-кому, хто спитав.
 		//
-		// Groups are an Android app's identity: without 3003 (inet) a session
-		// has no network at all, and without 1077/1079 it cannot see /sdcard.
-		// Getting them silently wrong is worse than failing, so failure is
-		// returned to the caller.
+		// Групи — це ідентичність Android-застосунку: без 3003 (inet) сесія
+		// не має мережі взагалі, а без 1077/1079 не бачить /sdcard. Тихо
+		// помилитися тут гірше, ніж впасти, тож помилка повертається тому,
+		// хто викликав.
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		who := user.Username
