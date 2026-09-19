@@ -260,14 +260,13 @@ func LogsDir(logf logger.Logf) string {
 	}
 
 	if runtime.GOOS == "android" {
-		if fi, err := os.Stat("/data/adb/tailscale"); err == nil && fi.IsDir() {
-			return "/data/adb/tailscale/log"
+		// Vau: логи поруч зі state; каталог створюємо самі, бо нижче
+		// ніхто цього не робить, і без нього логер мовчки писав би в cwd.
+		d := filepath.Join(paths.AndroidBaseDir(), "log")
+		if err := os.MkdirAll(d, 0700); err != nil {
+			logf("logpolicy: mkdir %q: %v", d, err)
 		}
-		prefix := os.Getenv("PREFIX")
-		if prefix == "" {
-			return filepath.Join(os.TempDir(), "tailscale", "log")
-		}
-		return filepath.Join(prefix, "var", "log", "tailscale")
+		return d
 	}
 
 	cacheDir, err := os.UserCacheDir()
