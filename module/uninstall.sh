@@ -1,16 +1,17 @@
 #!/system/bin/sh
 #
-# Runs when the module is removed from KernelSU Manager.
+# Виконується, коли модуль видаляють із KernelSU Manager.
 #
-# The supervisor is killed FIRST: kill the daemon first and the supervisor
-# simply starts it again, which looks exactly like an uninstall that did not
-# work.
+# Supervisor убивається ПЕРШИМ: убий спочатку демон — і supervisor просто
+# запустить його знову, що виглядає точнісінько як видалення, яке не
+# спрацювало.
 #
-# The node identity in /data/adb/tailscale/tailscaled.state is kept on purpose:
-# reinstalling the module then rejoins the tailnet as the SAME node, with the
-# same address and the same ACL rules. To leave the tailnet for real:
+# Ідентичність вузла в /data/adb/tailscale/tailscaled.state навмисно
+# зберігається: повторне встановлення модуля повертає в tailnet ТОЙ САМИЙ
+# вузол, з тією ж адресою й тими ж правилами ACL. Щоб піти з tailnet
+# по-справжньому:
 #   rm -rf /data/adb/tailscale
-# and remove the node in the Tailscale admin console.
+# і видалити вузол в адмін-консолі Tailscale.
 
 STATE=/data/adb/tailscale
 LOG=/data/local/tmp/vau_tailscale.log
@@ -22,4 +23,4 @@ for f in "$STATE/supervisor.pid" "$STATE/health.pid" "$STATE/tailscaled.pid"; do
     rm -f "$f"
 done
 
-echo "[$(date '+%m-%d %H:%M:%S')] module uninstalled; state kept in $STATE" >> "$LOG"
+echo "[$(date '+%m-%d %H:%M:%S')] модуль видалено; стан збережено в $STATE" >> "$LOG"
