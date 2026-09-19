@@ -3,97 +3,163 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
 <title>Vau Tailscale</title>
 <style>
+  /* Палітра: темна за замовчуванням, світла — якщо система просить. */
   :root{
     --bg:#0d0b14; --card:#171326; --card2:#1f1a30; --line:#2a2440;
-    --txt:#e8e4f5; --dim:#9a92b8; --accent:#a874ff; --ok:#3ddc84;
-    --bad:#ff5c72; --warn:#ffb454;
+    --txt:#e8e4f5; --dim:#9a92b8; --accent:#a874ff; --accent2:#7c4dff;
+    --ok:#3ddc84; --bad:#ff5c72; --warn:#ffb454; --mono:#cfc8ea; --pre:#0a0812;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f4f2fa; --card:#ffffff; --card2:#f0ecfa; --line:#e2dcf2;
+      --txt:#1d1830; --dim:#6e6690; --accent:#7c4dff; --accent2:#5b2ee6;
+      --ok:#1fa864; --bad:#e03e58; --warn:#d98a1a; --mono:#2a2440; --pre:#f7f5fc;
+      --shadow:0 10px 30px rgba(60,40,120,.12);
+    }
   }
   *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
   body{margin:0;background:var(--bg);color:var(--txt);
     font:15px/1.45 -apple-system,Roboto,"Segoe UI",sans-serif;
-    padding:max(14px,env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom))}
-  header{display:flex;align-items:center;gap:10px;margin:4px 0 14px}
-  header .logo{font-size:24px}
-  header h1{font-size:19px;margin:0;font-weight:600;letter-spacing:.2px}
-  header .ver{margin-left:auto;color:var(--dim);font-size:12px}
-  .tabs{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);
-    border-radius:12px;padding:4px;margin-bottom:14px}
-  .tabs button{flex:1;border:0;background:transparent;color:var(--dim);
-    font-size:13px;font-weight:600;padding:9px 4px;border-radius:9px;
+    padding:max(14px,env(safe-area-inset-top)) 14px calc(92px + env(safe-area-inset-bottom))}
+  header{display:flex;align-items:center;gap:10px;margin:2px 0 14px}
+  header .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:18px}
+  header h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.2px}
+  header .ver{margin-left:auto;color:var(--dim);font-size:12px;background:var(--card);
+    border:1px solid var(--line);border-radius:20px;padding:4px 10px}
+
+  /* Нижня панель вкладок — під великий палець, а не під курсор. */
+  nav{position:fixed;left:0;right:0;bottom:0;display:flex;
+    background:var(--card);border-top:1px solid var(--line);
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:5}
+  nav button{flex:1;border:0;background:transparent;color:var(--dim);
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    font-size:11px;font-weight:600;padding:6px 2px;border-radius:12px;
     -webkit-tap-highlight-color:transparent}
-  .tabs button.active{background:var(--accent);color:#fff}
+  nav button svg{width:22px;height:22px;stroke:currentColor;fill:none;
+    stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  nav button.active{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+
   .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
   button{border:0;border-radius:12px;padding:12px 14px;font-size:14px;
     font-weight:600;color:#fff;background:var(--accent);
-    -webkit-tap-highlight-color:transparent}
+    -webkit-tap-highlight-color:transparent;font-family:inherit}
   .row>button{flex:1;min-width:120px}
   button.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
   button.ok{background:var(--ok);color:#06210f}
   button.bad{background:var(--bad);color:#2a0710}
+  button.big{padding:15px 16px;font-size:16px;border-radius:14px}
   button:active{filter:brightness(.85)}
-  button:disabled{opacity:.5}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
-    padding:4px 14px;margin-bottom:14px}
+  button:disabled{opacity:.55}
+  button.mini{padding:7px 10px;font-size:12px;border-radius:9px;min-width:0}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:4px 14px;margin-bottom:14px;box-shadow:var(--shadow)}
   .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;
-    color:var(--dim);margin:14px 2px 8px}
-  .item{display:flex;align-items:center;gap:10px;padding:9px 2px;
+    color:var(--dim);margin:14px 2px 8px;display:flex;align-items:center;gap:8px}
+  .card h2 .val{margin-left:auto;text-transform:none;letter-spacing:0}
+  .item{display:flex;align-items:center;gap:10px;padding:10px 2px;
     border-top:1px solid var(--line)}
   .item:first-of-type{border-top:0}
   .item .k{flex:1;min-width:0}
   .item .k b{font-weight:500}
   .item .k small{display:block;color:var(--dim);font-size:11px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item.tap{cursor:pointer}
+  .item.tap:active{background:var(--card2)}
+
+  /* Головна картка: одна велика відповідь на питання «а воно працює?». */
+  .hero{padding:18px 16px 14px;position:relative;overflow:hidden}
+  .hero::before{content:"";position:absolute;inset:-40% -20% auto auto;width:220px;height:220px;
+    border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--hero,var(--dim)) 28%,transparent),transparent 70%);
+    pointer-events:none}
+  .hero .top{display:flex;align-items:center;gap:12px}
+  .dot{width:14px;height:14px;border-radius:50%;background:var(--hero,var(--dim));flex:0 0 auto;
+    box-shadow:0 0 0 0 color-mix(in srgb,var(--hero,var(--dim)) 45%,transparent)}
+  .dot.live{animation:pulse 2.2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--hero) 45%,transparent)}
+    70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  .hero .state{font-size:22px;font-weight:700;line-height:1.15}
+  .hero .name{color:var(--dim);font-size:13px;margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hero .ips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+  .hero .ip{background:var(--card2);border:1px solid var(--line);border-radius:10px;
+    padding:6px 10px;font:13px ui-monospace,Menlo,Consolas,monospace;color:var(--accent);cursor:pointer}
+  .hero .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+  .hero .row{margin:0}
+
   .chip{font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;white-space:nowrap}
-  .chip.ok{background:rgba(61,220,132,.14);color:var(--ok)}
-  .chip.bad{background:rgba(255,92,114,.14);color:var(--bad)}
-  .chip.warn{background:rgba(255,180,84,.14);color:var(--warn)}
-  .chip.dim{background:rgba(154,146,184,.14);color:var(--dim)}
+  .chip.ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+  .chip.bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+  .chip.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+  .chip.dim{background:color-mix(in srgb,var(--dim) 16%,transparent);color:var(--dim)}
   .item button.act{flex:0 0 auto;min-width:78px;padding:8px 10px;font-size:13px}
   .val{font-variant-numeric:tabular-nums;color:var(--dim);font-size:13px}
-  pre{background:#0a0812;border:1px solid var(--line);border-radius:12px;
+
+  /* Перемикач. Він показує СПРАВЖНІЙ стан (з prefs демона), а не «що натиснули востаннє». */
+  .sw{flex:0 0 auto;width:48px;height:28px;border-radius:14px;padding:0;position:relative;
+    background:var(--line);border:0;transition:background .2s}
+  .sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+    background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  .sw.on{background:var(--ok)}
+  .sw.on::after{left:23px}
+  .sw.arm{background:var(--bad);animation:blink .5s infinite alternate}
+  @keyframes blink{from{opacity:1}to{opacity:.55}}
+
+  /* Мініплитки процесів. */
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:6px 0 12px}
+  .tile{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+  .tile b{display:block;font-size:12px;color:var(--dim);font-weight:600;margin-bottom:4px}
+  .tile span{font-size:13px;font-weight:700}
+  .tile.ok span{color:var(--ok)} .tile.bad span{color:var(--bad)}
+
+  pre{background:var(--pre);border:1px solid var(--line);border-radius:12px;
     padding:12px;margin:0 0 4px;overflow:auto;max-height:38vh;
-    font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#cfc8ea}
+    font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;color:var(--mono);white-space:pre-wrap;word-break:break-word}
+  pre.inline{max-height:20vh;margin:0 0 8px;font-size:11px}
   .copyline{display:flex;align-items:center;gap:8px;padding:10px 2px}
-  .copyline code{flex:1;background:#0a0812;border:1px solid var(--line);border-radius:8px;
+  .copyline code{flex:1;background:var(--pre);border:1px solid var(--line);border-radius:8px;
     padding:8px 10px;font:12px ui-monospace,monospace;color:var(--accent);
     overflow:auto;white-space:nowrap}
   .copyline button{flex:0 0 auto;min-width:0;padding:8px 12px}
   .muted{color:var(--dim);font-size:12px;text-align:center;padding:6px}
   .hint{color:var(--dim);font-size:11px;padding:2px 2px 10px}
+  .empty{text-align:center;padding:18px 6px;color:var(--dim)}
+  .empty .big{font-size:30px;margin-bottom:6px}
   select,input{background:var(--card2);color:var(--txt);border:1px solid var(--line);
     border-radius:10px;padding:10px;font-size:14px;flex:1;min-width:120px;
     font-family:inherit}
-  [hidden]{display:none}
+  [hidden]{display:none!important}
+
+  /* Свій toast — на випадок, коли ksu.toast недоступний (відкрито у звичайному браузері). */
+  #toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);
+    background:var(--txt);color:var(--bg);padding:9px 14px;border-radius:20px;font-size:13px;
+    font-weight:600;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9;max-width:90vw}
+  #toast.show{opacity:.95}
 </style>
 </head>
 <body>
 <header>
   <span class="logo">🔗</span>
   <h1>Vau Tailscale</h1>
-  <span class="ver" id="ver"></span>
+  <span class="ver" id="ver">…</span>
 </header>
-
-<div class="tabs">
-  <button id="t-stan" class="active" onclick="showTab('stan')">Стан</button>
-  <button id="t-merezha" onclick="showTab('merezha')">Мережа</button>
-  <button id="t-dii" onclick="showTab('dii')">Дії</button>
-  <button id="t-onov" onclick="showTab('onov')">Оновлення</button>
-  <button id="t-log" onclick="showTab('log')">Журнал</button>
-</div>
 
 <!-- ===================== СТАН ===================== -->
 <section id="tab-stan">
-  <div class="row"><button id="refresh" class="sec">↻ Оновити</button></div>
-  <div class="card" id="node"><h2>Вузол</h2><div class="muted">завантаження…</div></div>
+  <div class="card hero" id="hero"><div class="muted">завантаження…</div></div>
+  <div class="card" id="health"><h2>Служба</h2><div class="muted">завантаження…</div></div>
   <div class="card" id="peers"><h2>Вузли мережі</h2><div class="muted">завантаження…</div></div>
+  <div class="muted" id="stamp"></div>
 </section>
 
 <!-- ===================== МЕРЕЖА (аналог адмінки) ===================== -->
 <section id="tab-merezha" hidden>
-  <div class="row"><button id="mrefresh" class="sec">↻ Оновити</button></div>
-
   <div class="card" id="profile"><h2>Обліковий запис</h2><div class="muted">завантаження…</div></div>
 
   <div class="card" id="exitcard">
@@ -134,11 +200,7 @@
 <!-- ===================== ДІЇ ====================== -->
 <section id="tab-dii" hidden>
   <div class="row">
-    <button id="up" class="ok">▲ Підключити</button>
-    <button id="down" class="bad">▼ Від'єднати</button>
-  </div>
-  <div class="row">
-    <button id="restart" class="sec">↺ Перезапустити демон</button>
+    <button id="restart" class="sec big">↺ Перезапустити демон</button>
   </div>
   <div class="card">
     <h2>Перевірка зв'язку</h2>
@@ -155,14 +217,30 @@
       <button id="servestatus" class="sec">Serve</button>
     </div>
   </div>
-  <div class="card"><h2>Вивід команди</h2><pre id="out">—</pre></div>
-  <div class="muted">Підключення виконується з <code>--ssh --accept-dns=false</code>:
+  <div class="card"><h2>Вивід команди <button class="mini sec" id="outcopy" style="margin-left:auto">копіювати</button></h2><pre id="out">—</pre></div>
+  <div class="muted">Перше підключення виконується з <code>--ssh --accept-dns=false</code>:
     перехоплення DNS вимкнено навмисно, див. docs/vau/AUDIT.md (C2, C3).</div>
+</section>
+
+<!-- ===================== ОНОВЛЕННЯ ================ -->
+<section id="tab-onov" hidden>
+  <div class="row">
+    <button id="uchk" class="sec">🔎 Перевірити</button>
+    <button id="uins" class="ok">⬇ Встановити оновлення</button>
+  </div>
+  <div class="card"><h2>Версії <span class="val" id="ustamp"></span></h2><pre id="uout">натисни «Перевірити»</pre></div>
+  <div class="muted">Оновлення модуля ставиться з підписаного релізу цього репозиторію
+    і застосовується після перезавантаження. Нову версію самого Tailscale з телефона
+    зібрати неможливо — потрібен перенос патчу й збірка в CI; перевірка лише покаже,
+    що вона вийшла.</div>
 </section>
 
 <!-- ===================== ЖУРНАЛ =================== -->
 <section id="tab-log" hidden>
-  <div class="row"><button id="lrefresh" class="sec">↻ Оновити</button></div>
+  <div class="row">
+    <button id="lrefresh" class="sec">↻ Оновити</button>
+    <button id="lmore" class="sec">Показати більше</button>
+  </div>
   <div class="card">
     <h2>Журнал модуля <span class="val" id="logmeta"></span></h2>
     <pre id="mlog">завантаження…</pre>
@@ -173,20 +251,19 @@
   </div>
 </section>
 
-<!-- ===================== ОНОВЛЕННЯ ================ -->
-<section id="tab-onov" hidden>
-  <div class="row">
-    <button id="uchk" class="sec">🔎 Перевірити</button>
-    <button id="uins" class="ok">⬇ Встановити оновлення</button>
-  </div>
-  <div class="card"><h2>Версії</h2><pre id="uout">натисни «Перевірити»</pre></div>
-  <div class="muted">Оновлення модуля ставиться з підписаного релізу цього репозиторію
-    і застосовується після перезавантаження. Нову версію самого Tailscale з телефона
-    зібрати неможливо — потрібен перенос патчу й збірка в CI; перевірка лише покаже,
-    що вона вийшла.</div>
-</section>
-
-<div class="muted" id="foot"></div>
+<nav>
+  <button id="t-stan" class="active" onclick="showTab('stan')">
+    <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Стан</button>
+  <button id="t-merezha" onclick="showTab('merezha')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Мережа</button>
+  <button id="t-dii" onclick="showTab('dii')">
+    <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Дії</button>
+  <button id="t-onov" onclick="showTab('onov')">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Оновлення</button>
+  <button id="t-log" onclick="showTab('log')">
+    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>Журнал</button>
+</nav>
+<div id="toast"></div>
 
 <script>
 const MOD   = "/data/adb/modules/vau_tailscale";
@@ -195,7 +272,7 @@ const CONF  = "/data/adb/vau-tailscale.conf";
 const MLOG  = "/data/local/tmp/vau_tailscale.log";
 const TS    = STATE + "/tailscale --socket=" + STATE + "/tailscaled.sock";
 
-// KernelSU WebUI bridge → Promise wrapper around ksu.exec(cmd, opts, cbName).
+// Міст KernelSU WebUI → Promise-обгортка над ksu.exec(cmd, opts, cbName).
 function sh(cmd){
   return new Promise((resolve)=>{
     if(typeof ksu === "undefined" || !ksu.exec){
@@ -208,17 +285,23 @@ function sh(cmd){
     catch(e){ delete window[cb]; resolve({errno:-1, stdout:"", stderr:String(e)}); }
   });
 }
-function toast(m){ try{ ksu.toast(m); }catch(e){} }
-function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+let toastTimer = null;
+function toast(m){
+  try{ if(typeof ksu !== "undefined" && ksu.toast){ ksu.toast(m); return; } }catch(e){}
+  const t = document.getElementById("toast");
+  t.textContent = m; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove("show"), 2200);
+}
+function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function chip(cls, text){ return `<span class="chip ${cls}">${esc(text)}</span>`; }
 function row(label, sub, cls, text){
   return `<div class="item"><div class="k"><b>${esc(label)}</b><small>${esc(sub)}</small></div>`
        + (cls ? chip(cls, text) : "") + `</div>`;
 }
-// Markers are always split as SUBSTRINGS, never matched as whole lines: command
-// output does not reliably end with a newline (`status --json` does not), so a
-// closing brace and the next marker arrive glued together as "}@@MODE@@" and a
-// line-exact check silently swallows the marker.
+// Маркери завжди ріжуться як ПІДРЯДКИ, а не як цілі рядки: вивід команди не
+// обов'язково закінчується переведенням рядка (`status --json` — ні), тож
+// закриваюча дужка і наступний маркер приходять склеєними як "}@@MODE@@",
+// і порядкова перевірка мовчки проковтнула б маркер.
 function section(text, from, to){
   const a = text.split(from);
   if(a.length < 2) return "";
@@ -229,25 +312,53 @@ function showTab(name){
     document.getElementById("tab-"+t).hidden = (t!==name);
     document.getElementById("t-"+t).classList.toggle("active", t===name);
   });
+  window.scrollTo(0,0);
   if(name==="log") loadLogs();
   if(name==="merezha") loadNetwork();
+  if(name==="stan") loadStatus();
 }
 function setOut(id, txt){ document.getElementById(id).textContent = txt || "—"; }
+function copyTxt(t){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(()=>toast("скопійовано: "+t),()=>toast("не вдалося скопіювати"));
+  }else{ toast("буфер недоступний"); }
+}
+function fmtTime(d){ return d.toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit",second:"2-digit"}); }
 
 /* ---------------- СТАН ---------------- */
 const STATE_UA = {
-  Running:          ["ok",   "працює"],
-  Starting:         ["warn", "запускається"],
-  NeedsLogin:       ["warn", "потрібен вхід"],
-  NeedsMachineAuth: ["warn", "очікує підтвердження"],
-  Stopped:          ["bad",  "зупинено"],
-  NoState:          ["bad",  "немає стану"],
+  Running:          ["ok",   "Підключено",           "все працює, вузол видно в мережі"],
+  Starting:         ["warn", "Запускається",         "демон піднімається, зачекай кілька секунд"],
+  NeedsLogin:       ["warn", "Потрібен вхід",        "натисни «Підключити» й відкрий посилання нижче"],
+  NeedsMachineAuth: ["warn", "Очікує підтвердження", "адміністратор мережі має схвалити цей вузол"],
+  Stopped:          ["bad",  "Від'єднано",           "демон живий, але вузол вимкнено — натисни «Підключити»"],
+  NoState:          ["bad",  "Немає стану",          "демон ще нічого не знає про мережу"],
 };
-let PEERS = [], EXITS = [], SELF = {};
+let PEERS = [], EXITS = [], SELF = {}, BACKEND_STATE = "?", PREFS = null;
 
 function daysLeft(iso){
-  if(!iso || iso.startsWith("0001-01-01")) return null;   // expiry disabled
+  if(!iso || iso.startsWith("0001-01-01")) return null;   // термін вимкнено
   return Math.round((new Date(iso) - Date.now()) / 86400000);
+}
+function alive(p){ return !!p && p !== "-"; }
+
+// Справжні налаштування вузла читаються з tailscaled.state: у цієї збірки немає
+// `tailscale debug prefs`, а `set` не має «get». Файл — JSON зі значеннями в
+// base64; поточний профіль лежить під ключем "_current-profile". У WebView
+// потрапляють ЛИШЕ перелічені поля: у prefs є ще Persist із приватним ключем
+// вузла, і він не має виходити за межі shell.
+const PREFS_CMD = String.raw`f=${STATE}/tailscaled.state; cur=$(sed -n 's/^ *"_current-profile": *"\([^"]*\)".*/\1/p' "$f" 2>/dev/null | base64 -d 2>/dev/null); [ -n "$cur" ] && sed -n "s/^ *\"$cur\": *\"\([^\"]*\)\".*/\1/p" "$f" | base64 -d 2>/dev/null | grep -oE '"(RouteAll|CorpDNS|RunSSH|ShieldsUp|ExitNodeAllowLANAccess|WantRunning|LoggedOut)":(true|false)|"Hostname":"[^"]*"|"AdvertiseRoutes":\[[^]]*\]'`;
+function parsePrefs(txt){
+  const p = {};
+  (txt||"").split("\n").forEach(l=>{
+    const m = l.trim().match(/^"(\w+)":(.*)$/); if(!m) return;
+    try{ p[m[1]] = JSON.parse(m[2]); }catch(e){}
+  });
+  return Object.keys(p).length ? p : null;
+}
+function advertisesExit(p){
+  const r = (p && p.AdvertiseRoutes) || [];
+  return r.includes("0.0.0.0/0") || r.includes("::/0");
 }
 
 async function loadStatus(){
@@ -255,76 +366,134 @@ async function loadStatus(){
     `echo @@JSON@@; ${TS} status --json;` +
     `echo @@MODE@@; (grep -m1 '^TUN_MODE=' ${CONF} 2>/dev/null || echo TUN_MODE=userspace);` +
     `echo @@PIDS@@; for f in supervisor.pid health.pid tailscaled.pid; do ` +
-    `p=$(cat ${STATE}/$f 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then echo "$f=$p"; else echo "$f=-"; fi; done`;
+    `p=$(cat ${STATE}/$f 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then echo "$f=$p"; else echo "$f=-"; fi; done;` +
+    `echo @@PREFS@@; ${PREFS_CMD}`;
 
   const {stdout, stderr, errno} = await sh(cmd);
-  const card = document.getElementById("node");
+  const hero = document.getElementById("hero");
   if(errno !== 0 && !stdout){
-    card.innerHTML = '<h2>Вузол</h2><div class="muted">'+esc(stderr||"помилка виконання")+'</div>';
+    hero.style.setProperty("--hero","var(--bad)");
+    hero.innerHTML = `<div class="top"><span class="dot"></span><div><div class="state">Немає зв'язку з модулем</div>`
+                   + `<div class="name">${esc(stderr||"помилка виконання")}</div></div></div>`;
     return;
   }
 
   const jsonTxt = section(stdout, "@@JSON@@", "@@MODE@@");
   const mode = ((section(stdout, "@@MODE@@", "@@PIDS@@").match(/TUN_MODE=(\S+)/) || [])[1] || "userspace").replace(/["']/g,"");
   const pids = {};
-  section(stdout, "@@PIDS@@").split("\n").map(s=>s.trim()).filter(Boolean).forEach(l=>{
+  section(stdout, "@@PIDS@@", "@@PREFS@@").split("\n").map(s=>s.trim()).filter(Boolean).forEach(l=>{
     const i = l.indexOf("="); if(i > 0) pids[l.slice(0,i)] = l.slice(i+1);
   });
+  PREFS = parsePrefs(section(stdout, "@@PREFS@@"));
 
   let st=null;
   try{ st = JSON.parse(jsonTxt); }catch(e){ st = null; }
 
-  let h = "<h2>Вузол</h2>";
+  // ---- служба (процеси + режим) ----
+  const dpid = pids["tailscaled.pid"];
+  let hh = "<h2>Служба</h2><div class=\"tiles\">";
+  [["наглядач","supervisor.pid"],["здоров'я","health.pid"],["демон","tailscaled.pid"]].forEach(([n,k])=>{
+    hh += `<div class="tile ${alive(pids[k])?"ok":"bad"}"><b>${n}</b><span>${alive(pids[k]) ? "pid "+esc(pids[k]) : "немає"}</span></div>`;
+  });
+  hh += "</div>";
+  const modeOk = mode === "userspace";
+  hh += row("Режим мережі", modeOk
+      ? "userspace — без tailscale0, без ip rule, без iptables"
+      : "kernel TUN — маршрути й iptables змінюються, потрібні фікси DNS з аудиту",
+    modeOk ? "ok" : "warn", mode);
+  document.getElementById("health").innerHTML = hh;
+
   if(!st){
-    h += row("Демон", "сокет не відповідає — демон не запущено або він завис", "bad", "недоступний");
-    h += row("Наглядач", "supervisor.pid = "+(pids["supervisor.pid"]||"-"),
-             pids["supervisor.pid"] && pids["supervisor.pid"]!=="-" ? "ok":"bad",
-             pids["supervisor.pid"] && pids["supervisor.pid"]!=="-" ? "живий":"немає");
-    card.innerHTML = h;
-    document.getElementById("peers").innerHTML = '<h2>Вузли мережі</h2><div class="muted">немає даних</div>';
+    hero.style.setProperty("--hero","var(--bad)");
+    hero.innerHTML = `<div class="top"><span class="dot"></span><div><div class="state">Демон не відповідає</div>`
+      + `<div class="name">${alive(pids["supervisor.pid"]) ? "наглядач живий — демон, мабуть, саме перезапускається" : "наглядач не запущений — перезавантаж телефон або натисни «Перезапустити демон»"}</div></div></div>`
+      + `<div class="row" style="margin-top:14px"><button id="hrestart" class="sec big">↺ Перезапустити демон</button></div>`;
+    document.getElementById("hrestart").onclick = (e)=>restartDaemon(e.currentTarget);
+    document.getElementById("peers").innerHTML = '<h2>Вузли мережі</h2><div class="empty"><div class="big">📡</div>немає даних, поки демон мовчить</div>';
+    stamp();
     return;
   }
 
   SELF = st.Self || {};
   const bs = st.BackendState || "?";
-  const [bcls, btxt] = STATE_UA[bs] || ["dim", bs];
-  h += row("Демон", "BackendState = "+bs, bcls, btxt);
-  h += row("Ім'я вузла", (SELF.OS||"android")+" · "+(SELF.DNSName||"").replace(/\.$/,""), null, "");
-  h += row("Адреси", (SELF.TailscaleIPs||[]).join("  ·  ") || "немає", null, "");
+  BACKEND_STATE = bs;
+  const [bcls, btxt, bsub] = STATE_UA[bs] || ["dim", bs, "невідомий стан бекенду"];
+  hero.style.setProperty("--hero", `var(--${bcls==="dim"?"dim":bcls})`);
 
+  let h = `<div class="top"><span class="dot ${bs==="Running"?"live":""}"></span><div style="min-width:0">`
+        + `<div class="state">${esc(btxt)}</div>`
+        + `<div class="name">${esc((SELF.DNSName||"").replace(/\.$/,"") || SELF.HostName || "")}</div></div></div>`;
+  h += `<div class="ips">` + (SELF.TailscaleIPs||[]).map(ip=>`<span class="ip" data-copy="${esc(ip)}">${esc(ip)}</span>`).join("") + `</div>`;
+  h += `<div class="hint" style="padding-top:0">${esc(bsub)}${(SELF.TailscaleIPs||[]).length ? " · торкнись адреси, щоб скопіювати" : ""}</div>`;
+
+  let chips = "";
   const dl = daysLeft(SELF.KeyExpiry);
-  if(dl === null){
-    h += row("Термін ключа", "вимкнено в адмінці — вузол не відпаде сам", "ok", "безстроковий");
-  }else{
-    h += row("Термін ключа", (SELF.KeyExpiry||"").slice(0,10)+" — після цієї дати вузол зникне з мережі",
-             dl<0?"bad":(dl<30?"warn":"ok"), dl<0?"прострочений":dl+" дн.");
+  chips += dl === null ? chip("ok","ключ безстроковий")
+         : chip(dl<0?"bad":(dl<30?"warn":"dim"), dl<0 ? "ключ прострочено" : "ключ ще "+dl+" дн.");
+  if(SELF.OS) chips += chip("dim", SELF.OS);
+  if(PREFS && PREFS.RunSSH) chips += chip("ok","SSH");
+  if(PREFS && PREFS.ShieldsUp) chips += chip("warn","щит увімкнено");
+  const cur = PEERS_from(st).find(p=>p.isExit);
+  if(cur) chips += chip("dim","вихід: "+cur.name);
+  h += `<div class="chips">${chips}</div>`;
+
+  if(bs === "Running"){
+    h += `<div class="row"><button id="hdown" class="bad big">▼ Від'єднати</button></div>`;
+  }else if(bs === "Stopped" || bs === "NeedsLogin" || bs === "NoState"){
+    h += `<div class="row"><button id="hup" class="ok big">▲ Підключити</button></div>`;
   }
-
-  const modeOk = mode === "userspace";
-  h += row("Режим мережі", modeOk
-      ? "userspace — без tailscale0, без ip rule, без iptables"
-      : "kernel TUN — маршрути й iptables змінюються, потрібні фікси DNS з аудиту",
-    modeOk ? "ok" : "warn", mode);
-
-  const dpid = pids["tailscaled.pid"];
-  h += row("Процеси", `наглядач ${pids["supervisor.pid"]||"-"} · здоров'я ${pids["health.pid"]||"-"} · демон ${dpid||"-"}`,
-           dpid && dpid!=="-" ? "ok" : "bad", dpid && dpid!=="-" ? "у роботі" : "немає");
-
   if(st.AuthURL){
-    // The URL is never interpolated into an attribute: esc() does not escape
-    // quotes, and everything in status --json comes from elsewhere in the tailnet.
+    // URL ніколи не вставляється в атрибут: усе, що приходить зі status --json,
+    // походить з інших вузлів мережі, тож текст ставиться через textContent.
     h += `<div class="copyline"><code id="authurl"></code>`
        + `<button class="sec" id="authcopy">копіювати</button></div>`
        + '<div class="muted">Відкрий це посилання, щоб авторизувати вузол.</div>';
   }
-  card.innerHTML = h;
+  hero.innerHTML = h;
+  hero.querySelectorAll("[data-copy]").forEach(el=>el.onclick=()=>copyTxt(el.getAttribute("data-copy")));
   if(st.AuthURL){
     document.getElementById("authurl").textContent = st.AuthURL;
     document.getElementById("authcopy").onclick = ()=>copyTxt(st.AuthURL);
   }
+  const hup = document.getElementById("hup"), hdown = document.getElementById("hdown");
+  if(hup) hup.onclick = (e)=>doUp(e.currentTarget);
+  if(hdown) hdown.onclick = (e)=>doDown(e.currentTarget);
 
-  // ---- peers ----
-  PEERS = Object.values(st.Peer || {}).map(p=>({
+  // ---- вузли ----
+  PEERS = PEERS_from(st);
+  EXITS = PEERS.filter(p=>p.exit);
+
+  const online = PEERS.filter(p=>p.online).length;
+  let ph = `<h2>Вузли мережі <span class="val">${online} у мережі з ${PEERS.length}</span></h2>`;
+  if(!PEERS.length){
+    ph += '<div class="empty"><div class="big">🛰️</div>у мережі поки лише цей телефон</div>';
+  }
+  PEERS.forEach((p,i)=>{
+    const sub = p.online
+      ? (p.ip + " · " + (p.direct ? "напряму" : ("через DERP "+(p.relay||"?"))) + (p.os?" · "+p.os:""))
+      : (p.ip + " · востаннє " + (p.last||"?").slice(0,10));
+    ph += `<div class="item"><div class="k"><b>${esc(p.name)}${p.isExit ? " · вихідний" : ""}${p.exit && !p.isExit ? " · може бути виходом" : ""}</b><small>${esc(sub)}</small></div>`
+        + chip(p.online?"ok":"dim", p.online?"у мережі":"офлайн")
+        + (p.online && p.ip ? `<button class="mini sec" data-ping="${esc(p.ip)}" data-i="${i}">ping</button>` : "")
+        + `</div><pre class="inline" id="pp-${i}" hidden></pre>`;
+  });
+  document.getElementById("peers").innerHTML = ph;
+  document.querySelectorAll("[data-ping]").forEach(b=>b.onclick=()=>pingInline(b));
+
+  const fill = (sel, list, empty)=>{
+    const el = document.getElementById(sel);
+    if(!el) return;
+    const keep = el.value;
+    el.innerHTML = `<option value="">${empty}</option>` +
+      list.filter(p=>p.ip).map(p=>`<option value="${esc(p.ip)}">${esc(p.name)}</option>`).join("");
+    if(keep) el.value = keep;
+  };
+  fill("peersel", PEERS, "— вузол —");
+  fill("exitsel", EXITS, "— не використовувати —");
+  stamp();
+}
+function PEERS_from(st){
+  return Object.values(st.Peer || {}).map(p=>({
     name: (p.HostName||"?"),
     ip:   (p.TailscaleIPs||[])[0] || "",
     os:   p.OS || "",
@@ -335,36 +504,23 @@ async function loadStatus(){
     exit: !!p.ExitNodeOption,
     isExit: !!p.ExitNode,
   })).sort((a,b)=> (b.online-a.online) || a.name.localeCompare(b.name));
-  EXITS = PEERS.filter(p=>p.exit);
+}
+function stamp(){ document.getElementById("stamp").textContent = "оновлено о "+fmtTime(new Date())+" · оновлюється само кожні 20 с"; }
 
-  let ph = `<h2>Вузли мережі · ${PEERS.filter(p=>p.online).length} у мережі з ${PEERS.length}</h2>`;
-  PEERS.forEach(p=>{
-    const sub = p.online
-      ? (p.ip + " · " + (p.direct ? "напряму" : ("через DERP "+(p.relay||"?"))) + (p.os?" · "+p.os:""))
-      : (p.ip + " · востаннє " + (p.last||"?").slice(0,10));
-    ph += row(p.name + (p.isExit ? " (вихідний)" : ""), sub, p.online?"ok":"dim", p.online?"у мережі":"офлайн");
-  });
-  document.getElementById("peers").innerHTML = ph;
-
-  const fill = (sel, list, empty)=>{
-    const el = document.getElementById(sel);
-    if(!el) return;
-    el.innerHTML = `<option value="">${empty}</option>` +
-      list.filter(p=>p.ip).map(p=>`<option value="${esc(p.ip)}">${esc(p.name)}</option>`).join("");
-  };
-  fill("peersel", PEERS, "— вузол —");
-  fill("exitsel", EXITS, "— не використовувати —");
+async function pingInline(btn){
+  const ip = btn.getAttribute("data-ping"), pre = document.getElementById("pp-"+btn.getAttribute("data-i"));
+  if(!isTailnetAddr(ip)){ toast("недопустима адреса"); return; }
+  btn.disabled = true; btn.textContent = "…"; pre.hidden = false; pre.textContent = "ping "+ip+"…";
+  const {stdout, stderr} = await sh(`${TS} ping -c 2 -- ${ip} 2>&1`);
+  pre.textContent = ((stdout||"")+"\n"+(stderr||"")).trim() || "без відповіді";
+  btn.disabled = false; btn.textContent = "ping";
 }
 
 /* ---------------- МЕРЕЖА ---------------- */
-// tailscale set has no "get": the build has no `debug` subcommand, so a toggle
-// cannot be rendered as a checkbox that claims to know the current value.
-// Everything below is either read from a command that really reports state
-// (dns status, status --json) or presented as an action with its output shown.
+// У `tailscale set` немає «get», тому перемикачі беруть стан із prefs демона
+// (PREFS, читається у loadStatus). Якщо prefs прочитати не вдалося — показуємо
+// пару кнопок «Увімк/Вимк», що чесно не претендують знати поточне значення.
 async function loadNetwork(){
-  // The exit-node dropdown is built from status --json (loadStatus), so
-  // `exit-node list` is deliberately NOT fetched here: asking for output nobody
-  // reads is how a UI starts lying about where its numbers come from.
   const cmd = `echo @@PROF@@; ${TS} switch --list 2>&1;`
             + `echo @@DNS@@; ${TS} dns status 2>&1 | head -6`;
   const {stdout} = await sh(cmd);
@@ -379,63 +535,76 @@ async function loadNetwork(){
   document.getElementById("profile").innerHTML = ph || '<h2>Обліковий запис</h2><div class="muted">немає даних</div>';
 
   const dns = section(stdout, "@@DNS@@");
-  const dnsOn = /Tailscale DNS: enabled/i.test(dns);
+  const dnsOn = PREFS ? !!PREFS.CorpDNS : /Tailscale DNS: enabled/i.test(dns);
   const current = PEERS.find(p=>p.isExit);
   document.getElementById("exitstate").innerHTML =
     row("Поточний вихідний вузол", current ? current.ip : "трафік іде напряму, повз мережу",
         current ? "ok" : "dim", current ? current.name : "вимкнено");
 
-  let th = "<h2>Налаштування вузла</h2>";
-  th += `<div class="item"><div class="k"><b>DNS мережі</b>`
-      + `<small>${dnsOn ? "запити йдуть на резолвер Tailscale" : "вимкнено навмисно, див. C2/C3 в аудиті"}</small></div>`
-      + chip(dnsOn?"ok":"dim", dnsOn?"увімкнено":"вимкнено")
-      + `<button class="act sec" data-set="--accept-dns=${dnsOn?"false":"true"}">${dnsOn?"Вимкнути":"Увімкнути"}</button></div>`;
-
   const acts = [
-    ["Tailscale SSH",            "приймати вхідні SSH через мережу",        "--ssh=true",                       "--ssh=false"],
-    ["Приймати маршрути",        "маршрути, які роздають інші вузли",       "--accept-routes=true",             "--accept-routes=false"],
-    ["Пропонувати як вихідний",  "цей телефон стане вихідним вузлом",       "--advertise-exit-node=true",       "--advertise-exit-node=false"],
-    ["Доступ до LAN через вихід", "поки використовується вихідний вузол",   "--exit-node-allow-lan-access=true","--exit-node-allow-lan-access=false"],
-    ["Щит (блокувати вхідні)",   "shields-up: відхиляти вхідні з'єднання",  "--shields-up=true",                "--shields-up=false"],
+    ["DNS мережі",               dnsOn ? "запити йдуть на резолвер Tailscale" : "вимкнено навмисно, див. C2/C3 в аудиті", "--accept-dns", dnsOn],
+    ["Tailscale SSH",            "приймати вхідні SSH через мережу",        "--ssh",                       PREFS ? !!PREFS.RunSSH : null],
+    ["Приймати маршрути",        "маршрути, які роздають інші вузли",       "--accept-routes",             PREFS ? !!PREFS.RouteAll : null],
+    ["Пропонувати як вихідний",  "цей телефон стане вихідним вузлом",       "--advertise-exit-node",       PREFS ? advertisesExit(PREFS) : null],
+    ["Доступ до LAN через вихід","поки використовується вихідний вузол",    "--exit-node-allow-lan-access",PREFS ? !!PREFS.ExitNodeAllowLANAccess : null],
+    ["Щит (блокувати вхідні)",   "shields-up: відхиляти вхідні з'єднання",  "--shields-up",                PREFS ? !!PREFS.ShieldsUp : null],
   ];
-  acts.forEach(([label, sub, on, off])=>{
-    th += `<div class="item"><div class="k"><b>${esc(label)}</b><small>${esc(sub)}</small></div>`
-        + `<button class="act ok" data-set="${on}">Увімк</button>`
-        + `<button class="act sec" data-set="${off}">Вимк</button></div>`;
+  let th = "<h2>Налаштування вузла</h2>";
+  acts.forEach(([label, sub, flag, on])=>{
+    th += `<div class="item"><div class="k"><b>${esc(label)}</b><small>${esc(sub)}</small></div>`;
+    if(on === null){
+      th += `<button class="act ok" data-set="${flag}=true">Увімк</button>`
+          + `<button class="act sec" data-set="${flag}=false">Вимк</button>`;
+    }else{
+      th += `<button class="sw ${on?"on":""}" data-flag="${flag}" data-on="${on?1:0}" aria-label="${esc(label)}"></button>`;
+    }
+    th += `</div>`;
   });
+  if(!PREFS) th += `<div class="hint">Поточні значення прочитати не вдалося — кнопки лише задають нове.</div>`;
   document.getElementById("toggles").innerHTML = th;
 
   document.querySelectorAll("[data-set]").forEach(b=>{
     b.onclick = ()=>applySet(b, b.getAttribute("data-set"));
   });
+  document.querySelectorAll(".sw[data-flag]").forEach(b=>{
+    b.onclick = ()=>applySet(b, b.getAttribute("data-flag")+"="+(b.getAttribute("data-on")==="1" ? "false" : "true"));
+  });
+
+  // Поля попередньо заповнюються справжніми значеннями, щоб не гадати.
+  const hn = document.getElementById("hostname"), rt = document.getElementById("routes");
+  if(PREFS && !hn.value) hn.value = PREFS.Hostname || SELF.HostName || "";
+  if(PREFS && !rt.value) rt.value = (PREFS.AdvertiseRoutes||[]).filter(r=>r!=="0.0.0.0/0" && r!=="::/0").join(",");
 }
 
-// Two of these switches cut the very path this module exists to provide:
-// shields-up blocks incoming connections and --ssh=false stops Tailscale SSH,
-// so one stray tap locks the owner out until the phone is in hand again.
-// A WebView dialog is not relied on (the host need not implement onJsConfirm,
-// and a dialog that never appears turns the button into a dead one): the first
-// tap arms the button, a second tap within 4 seconds acts.
+// Два з цих перемикачів відрізають саме той шлях, заради якого існує модуль:
+// shields-up блокує вхідні з'єднання, а --ssh=false зупиняє Tailscale SSH, тож
+// один зайвий дотик замикає власника ззовні, доки телефон не в руках.
+// На діалог WebView не покладаємось (хост може не реалізувати onJsConfirm, і
+// діалог, що не з'являється, робить кнопку мертвою): перший дотик «зводить»
+// кнопку, другий упродовж 4 секунд виконує дію.
 const DANGEROUS = ["--shields-up=true", "--ssh=false"];
 function armed(btn){
+  const isSw = btn.classList.contains("sw");
   if(btn.dataset.armed === "1"){
     delete btn.dataset.armed;
-    if(btn.dataset.label) btn.textContent = btn.dataset.label;  // restore before the action relabels it
+    if(isSw) btn.classList.remove("arm");
+    else if(btn.dataset.label) btn.textContent = btn.dataset.label;  // повернути підпис до того, як дія його змінить
     return true;
   }
-  btn.dataset.label = btn.textContent;
   btn.dataset.armed = "1";
-  btn.textContent = "Точно?";
+  if(isSw) btn.classList.add("arm");
+  else{ btn.dataset.label = btn.textContent; btn.textContent = "Точно?"; }
   setTimeout(()=>{
     if(btn.dataset.armed === "1"){
       delete btn.dataset.armed;
-      btn.textContent = btn.dataset.label || btn.textContent;
+      if(isSw) btn.classList.remove("arm");
+      else btn.textContent = btn.dataset.label || btn.textContent;
     }
   }, 4000);
   return false;
 }
 
-// Only flags this UI itself defines are ever passed to the shell.
+// У shell потрапляють лише прапорці, які цей UI сам і визначає.
 const ALLOWED_SET = /^--[a-z-]+=(true|false)$/;
 async function applySet(btn, flag){
   if(!ALLOWED_SET.test(flag)){ toast("відхилено"); return; }
@@ -443,11 +612,12 @@ async function applySet(btn, flag){
     toast("це відріже доступ до телефона — натисни ще раз");
     return;
   }
-  const old = btn.textContent; btn.disabled = true; btn.textContent = "…";
+  const isSw = btn.classList.contains("sw");
+  const old = btn.textContent; btn.disabled = true; if(!isSw) btn.textContent = "…";
   const {stdout, stderr, errno} = await sh(`${TS} set ${flag} 2>&1`);
   setOut("mout", (stdout+"\n"+stderr).trim() || (errno===0 ? "готово: "+flag : "помилка"));
-  toast(errno===0 ? "застосовано" : "помилка");
-  btn.disabled = false; btn.textContent = old;
+  toast(errno===0 ? "застосовано" : "помилка: "+((stderr||stdout||"").trim().split("\n")[0]||"?"));
+  btn.disabled = false; if(!isSw) btn.textContent = old;
   await loadStatus(); await loadNetwork();
 }
 
@@ -480,36 +650,35 @@ document.getElementById("hostapply").onclick = async (e)=>{
 document.getElementById("routesapply").onclick = async (e)=>{
   const v = document.getElementById("routes").value.trim();
   if(v && !/^[0-9a-fA-F:.\/,]+$/.test(v)){ toast("недопустимий список маршрутів"); return; }
+  // Якщо вузол уже роздає себе як вихідний, ці маршрути не можна мовчки
+  // стерти списком LAN-мереж — 0/0 додається назад.
+  const list = v ? v.split(",").filter(Boolean) : [];
+  if(PREFS && advertisesExit(PREFS)) list.push("0.0.0.0/0","::/0");
   const b = e.currentTarget; b.disabled = true;
-  const {stdout, stderr, errno} = await sh(`${TS} set --advertise-routes=${v} 2>&1`);
+  const {stdout, stderr, errno} = await sh(`${TS} set --advertise-routes=${list.join(",")} 2>&1`);
   setOut("mout", (stdout+"\n"+stderr).trim() || (errno===0 ? (v?"анонсовано: "+v:"маршрути прибрано") : "помилка"));
   toast(errno===0 ? "застосовано" : "помилка");
   b.disabled = false;
+  await loadStatus();
 };
 
 /* ---------------- ЖУРНАЛ ---------------- */
+let LOG_LINES = 60;
 async function loadLogs(){
-  const {stdout} = await sh(`echo @@M@@; tail -n 60 ${MLOG} 2>/dev/null; echo @@D@@; tail -n 40 ${STATE}/daemon.log 2>/dev/null`);
+  const {stdout} = await sh(`echo @@M@@; tail -n ${LOG_LINES} ${MLOG} 2>/dev/null; echo @@D@@; tail -n ${Math.round(LOG_LINES*2/3)} ${STATE}/daemon.log 2>/dev/null`);
   const m = section(stdout, "@@M@@", "@@D@@").trim();
   const d = section(stdout, "@@D@@").trim();
   const me=document.getElementById("mlog"), de=document.getElementById("dlog");
   me.textContent = m || "(порожньо — модуль ще не запускався)";
   de.textContent = d || "(порожньо)";
   me.scrollTop = me.scrollHeight; de.scrollTop = de.scrollHeight;
-  document.getElementById("logmeta").textContent = m ? "· останні "+m.split("\n").length+" рядків" : "";
+  document.getElementById("logmeta").textContent = m ? "останні "+m.split("\n").length+" рядків" : "";
 }
-
-function copyTxt(t){ navigator.clipboard?.writeText(t).then(()=>toast("скопійовано"),()=>toast("не вдалося скопіювати")); }
-
-async function refreshStatus(){
-  const b=document.getElementById("refresh"); b.disabled=true; b.textContent="↻ …";
-  await loadStatus();
-  b.disabled=false; b.textContent="↻ Оновити";
-}
+document.getElementById("lmore").onclick = ()=>{ LOG_LINES = Math.min(LOG_LINES*3, 600); loadLogs(); };
 
 /* ---------------- ДІЇ ---------------- */
-// Buttons that change network state lock while they run: a double tap must not
-// leave the daemon half-way between up and down.
+// Кнопки, що змінюють стан мережі, блокуються на час виконання: подвійний дотик
+// не має лишити демон посередині між up і down.
 async function act(btn, label, cmd, okMsg, outId){
   const old = btn.textContent;
   btn.disabled = true; btn.textContent = label;
@@ -521,49 +690,69 @@ async function act(btn, label, cmd, okMsg, outId){
   await loadStatus();
 }
 
-document.getElementById("up").onclick = (e)=>act(e.currentTarget, "▲ …",
-  `${TS} up --ssh --accept-dns=false --accept-routes=false 2>&1`, "підключено");
-// `down` disconnects the node — the same lockout as shields-up, so the same
-// arming: one tap warns, the second within 4 seconds actually disconnects.
-document.getElementById("down").onclick = (e)=>{
-  if(!armed(e.currentTarget)){ toast("це відріже доступ до телефона — натисни ще раз"); return; }
-  return act(e.currentTarget, "▼ …", `${TS} down 2>&1`, "від'єднано");
-};
-// Stop then start: service.sh kills the supervisor first, otherwise it would
-// restart the daemon a second later and look like nothing happened.
-document.getElementById("restart").onclick = (e)=>act(e.currentTarget, "↺ …",
-  `sh ${MOD}/service.sh stop; sh ${MOD}/service.sh; sleep 3; ${TS} status 2>&1 | head -3`, "перезапущено");
+// Перший вхід отримує безпечні типові значення явно. Далі лише голий `up`
+// працює завжди: з прапорцями tailscaled відмовляє, щойно хоч одна
+// налаштування відрізняється від типового (наприклад, увімкнені маршрути у
+// «Мережі»), і вимагає --reset, який мовчки скинув би ці перемикачі.
+function doUp(btn){
+  return act(btn, "▲ …",
+    BACKEND_STATE === "NeedsLogin"
+      ? `${TS} up --ssh --accept-dns=false --accept-routes=false 2>&1`
+      : `${TS} up 2>&1`, "підключено");
+}
+// `down` від'єднує вузол — те саме замикання ззовні, що й shields-up, тому й
+// та сама «зведена» кнопка: перший дотик попереджає, другий за 4 с від'єднує.
+function doDown(btn){
+  if(!armed(btn)){ toast("це відріже доступ до телефона — натисни ще раз"); return; }
+  return act(btn, "▼ …", `${TS} down 2>&1`, "від'єднано");
+}
+// Спочатку stop, потім start: service.sh спершу вбиває наглядача, інакше той
+// перезапустить демон за секунду, і здаватиметься, що нічого не сталося.
+function restartDaemon(btn){
+  return act(btn, "↺ …",
+    `sh ${MOD}/service.sh stop; sh ${MOD}/service.sh; sleep 3; ${TS} status 2>&1 | head -3`, "перезапущено");
+}
+document.getElementById("restart").onclick = (e)=>restartDaemon(e.currentTarget);
 document.getElementById("ping").onclick = async (e)=>{
   const ip = document.getElementById("peersel").value;
   if(!ip){ toast("оберіть вузол"); return; }
-  // The address runs in a command executed as root and comes from status --json,
-  // i.e. from other devices. Checked, then passed after `--` so it can never be
-  // read as a flag.
+  // Адреса йде в команду, яку виконує root, і походить зі status --json, тобто
+  // з інших пристроїв. Перевіряється, а тоді передається після `--`, щоб її
+  // ніколи не прочитали як прапорець.
   if(!isTailnetAddr(ip)){ toast("недопустима адреса"); setOut("out", "відхилено: "+ip); return; }
   await act(e.currentTarget, "…", `${TS} ping -c 3 -- ${ip} 2>&1`, "готово");
 };
 document.getElementById("netcheck").onclick = (e)=>act(e.currentTarget, "…", `${TS} netcheck 2>&1`, "готово");
 document.getElementById("dnsstatus").onclick = (e)=>act(e.currentTarget, "…", `${TS} dns status 2>&1`, "готово");
 document.getElementById("servestatus").onclick = (e)=>act(e.currentTarget, "…", `${TS} serve status 2>&1`, "готово");
+document.getElementById("outcopy").onclick = ()=>copyTxt(document.getElementById("out").textContent);
 
-// Installing a new root daemon is not a tap to make by accident: armed like
-// the switches that cut access, so the first tap only warns.
-document.getElementById("uchk").onclick = (e)=>act(e.currentTarget, "🔎 …",
-  `sh ${MOD}/update.sh 2>&1`, "перевірено", "uout");
+// Встановлення нового root-демона — не той дотик, який роблять випадково:
+// «зводиться» так само, як перемикачі, що відрізають доступ.
+document.getElementById("uchk").onclick = async (e)=>{
+  await act(e.currentTarget, "🔎 …", `sh ${MOD}/update.sh 2>&1`, "перевірено", "uout");
+  document.getElementById("ustamp").textContent = "перевірено о "+fmtTime(new Date());
+};
 document.getElementById("uins").onclick = (e)=>{
   if(!armed(e.currentTarget)){ toast("встановить новий root-демон — натисни ще раз"); return; }
   return act(e.currentTarget, "⬇ …", `sh ${MOD}/update.sh install 2>&1`, "готово", "uout");
 };
 
-document.getElementById("refresh").onclick = refreshStatus;
-document.getElementById("mrefresh").onclick = loadNetwork;
 document.getElementById("lrefresh").onclick = loadLogs;
 
 /* ---------------- init ---------------- */
 sh(`grep -m1 '^version=' ${MOD}/module.prop | cut -d= -f2-`).then(r=>{
-  document.getElementById("ver").textContent = (r.stdout||"").trim();
+  document.getElementById("ver").textContent = (r.stdout||"").trim() || "?";
 });
-refreshStatus();
+loadStatus();
+// Автооновлення лише поки видно вкладку «Стан» і сторінку не згорнуто:
+// status --json на кожному тику — це виклик у демон, дарма його не смикаємо.
+setInterval(()=>{
+  if(document.hidden) return;
+  if(document.getElementById("tab-stan").hidden) return;
+  if(document.querySelector("button:disabled")) return;   // триває дія — не перемальовуємо під пальцем
+  loadStatus();
+}, 20000);
 </script>
 </body>
 </html>
