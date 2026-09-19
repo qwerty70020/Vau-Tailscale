@@ -7,7 +7,7 @@
 // and groups to the specified `--uid`, `--gid` and `--groups`, and
 // then launches the requested `--cmd`.
 
-//go:build (linux && !android) || android || (darwin && !ios) || freebsd || openbsd
+//go:build linux || (darwin && !ios) || freebsd || openbsd
 
 package tailssh
 
@@ -525,6 +525,16 @@ func shouldAttemptLoginShell(dlogf logger.Logf, ia incubatorArgs) bool {
 		return false
 	}
 
+	if runtime.GOOS == android {
+		// На Android немає ні login(1), ні PAM, а демон завжди працює як root
+		// із SELinux enforcing — але --is-selinux-enforcing передається лише
+		// на GOOS linux (див. newIncubatorCommand), тож без цього сама
+		// перевірка на root відправляла б кожну сесію в exec.LookPath("login").
+		// Рятував лише чистий PATH демона (docs/vau/AUDIT.md, H4).
+		dlogf("won't use login shell on android")
+		return false
+	}
+
 	return runningAsRoot() && !ia.isSELinuxEnforcing
 }
 
@@ -868,7 +878,8 @@ func doDropPrivileges(dlogf logger.Logf, wantUid, wantGid int, supplementaryGrou
 func (ss *sshSession) incubatorEnv() []string {
 	env := envForUser(ss.conn.localUser)
 
-	// Vau's Android-specific env carry-over
+	// Android: перенести в сесію ті змінні демона, без яких shell не працює
+	// (модуль стартує його через env -i, тож іншого джерела в них немає).
 	if runtime.GOOS == "android" {
 		for _, kv := range os.Environ() {
 			k, _, _ := strings.Cut(kv, "=")
@@ -913,13 +924,6 @@ func (ss *sshSession) launchProcess() error {
 
 	cmd := ss.cmd
 	cmd.Env = ss.incubatorEnv()
-
-	// Vau's Android-specific: set working directory to HOME
-	if runtime.GOOS == "android" {
-		if home, exists := os.LookupEnv("HOME"); exists {
-			cmd.Dir = home
-		}
-	}
 
 	if len(forwardedEnv) > 0 {
 		// The accepted environment may contain secrets, so it is passed to the child via an
@@ -1267,16 +1271,6 @@ func setGroups(groupIDs []int) error {
 		// some permissions thing isn't working, due to some arbitrary group ordering, but it at least allows
 		// this to work for more things than it previously did.
 		groupIDs = groupIDs[:16]
-	}
-
-	if runtime.GOOS == "android" {
-		if os.Geteuid() == 0 {
-			err := syscall.Setgroups(groupIDs)
-			if err != nil {
-				fmt.Println("Setgroups failed:", err)
-			}
-		}
-		return nil
 	}
 
 	err := syscall.Setgroups(groupIDs)

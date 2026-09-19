@@ -1,7 +1,7 @@
 // Copyright (c) Tailscale Inc & contributors
 // SPDX-License-Identifier: BSD-3-Clause
 
-//go:build (linux && !android) || android || (darwin && !ios) || freebsd || openbsd || plan9
+//go:build linux || (darwin && !ios) || freebsd || openbsd || plan9
 
 package tailssh
 
@@ -109,23 +109,24 @@ func defaultPathForUser(u *user.User) string {
 		return defaultPathForUserOnNixOS(u)
 	}
 	if runtime.GOOS == "android" {
-		// Android has none of the Unix directories the defaults below name:
-		// measured on Android 16, only /bin exists and only as a symlink to
-		// /system/bin, while /usr/bin, /usr/local/bin and /sbin are absent.
-		// Sessions therefore worked by accident, through that one symlink.
+		// На Android немає жодного з Unix-каталогів, які називають типові
+		// значення нижче: виміряно на Android 16 — існує лише /bin, і то як
+		// симлінк на /system/bin, а /usr/bin, /usr/local/bin і /sbin відсутні.
+		// Тож сесії працювали випадково, через той один симлінк.
 		//
-		// Every entry here was checked to exist on the device. /system/xbin and
-		// /sbin are left out precisely because they do not, and the root
-		// toolchain in /data/adb/ksu/bin is left out because a session's PATH
-		// is not the place for it — same reasoning as H5: what root executes
-		// should not be decided by a directory someone else can populate.
+		// Кожен запис тут перевірено на існування на пристрої. /system/xbin і
+		// /sbin вилучено саме тому, що їх немає, а root-інструментарій у
+		// /data/adb/ksu/bin — бо PATH сесії не місце для нього; та сама логіка,
+		// що й у H5: що виконує root, не має вирішувати каталог, який може
+		// наповнити хтось інший.
 		sys := "/system/bin:/system_ext/bin:/vendor/bin:/apex/com.android.art/bin:/apex/com.android.runtime/bin"
-		// An app's own bin directory goes first when the session belongs to that
-		// app: a login as the terminal app's uid should find the tools that app
-		// installed, exactly as its own shell does. The directory is derived from
-		// the home the lookup already resolved, so the package manager is not
-		// asked twice. It is prepended only for THAT uid's session — never for
-		// root, whose PATH must not contain anything a non-root uid can write.
+		// Власний bin-каталог застосунку йде першим, коли сесія належить цьому
+		// застосунку: вхід під uid термінального застосунку має знаходити
+		// інструменти, які той установив, точно як його власна оболонка.
+		// Каталог виводиться з дому, який lookup уже резолвив, тож менеджер
+		// пакетів не питають двічі. Додається лише для сесії ЦЬОГО uid —
+		// ніколи для root, чий PATH не має містити нічого, куди може писати
+		// не-root uid.
 		if strings.HasPrefix(u.HomeDir, "/data/data/") && !isRoot {
 			if root, ok := strings.CutSuffix(u.HomeDir, "/files/home"); ok {
 				if bin := root + "/files/usr/bin"; dirExists(bin) {
