@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tailscale.com/envknob"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/logger"
 )
@@ -167,6 +168,9 @@ func (i *iptablesRunner) AddHooks() error {
 		if err := divert(ipt, "mangle", "PREROUTING"); err != nil {
 			return err
 		}
+		if err := divert(ipt, "mangle", "FORWARD"); err != nil {
+			return err
+		}
 	}
 
 	for _, ipt := range i.getNATTables() {
@@ -202,6 +206,9 @@ func (i *iptablesRunner) AddChains() error {
 			return err
 		}
 		if err := create(ipt, "mangle", "ts-prerouting"); err != nil {
+			return err
+		}
+		if err := create(ipt, "mangle", "ts-forward"); err != nil {
 			return err
 		}
 	}
@@ -266,30 +273,49 @@ func (i *iptablesRunner) addBase4(tunname string) error {
 		return fmt.Errorf("adding %v in v4/filter/ts-forward: %w", args, err)
 	}
 
-	// For Android: mark in PREROUTING so routing decision can use the mark
-	args = []string{"-i", tunname, "-j", "MARK", "--set-mark", subnetRouteMark + "/" + fwmarkMask}
-	if err := i.ipt4.Append("mangle", "ts-prerouting", args...); err != nil {
-		return fmt.Errorf("adding %v in v4/mangle/ts-prerouting: %w", args, err)
+	return i.addAndroidBase(i.ipt4, "v4", tunname, true)
+}
+
+// hotspotShare виводить власних клієнтів точки доступу телефону в tailnet: їхній
+// трафік маскарадиться в тунель так, ніби йде від телефону. Типово вимкнено —
+// це відкриває кожен peer, до якого дістає телефон, будь-кому на hotspot'і, і
+// це не те, що означає --advertise-routes (docs/vau/AUDIT.md, H6).
+var hotspotShare = envknob.RegisterBool("TS_ANDROID_HOTSPOT_SHARE")
+
+// addAndroidBase додає правила, потрібні Android-модулю понад upstream'овою
+// базою, для одного сімейства протоколів. Вони торкаються лише трафіку, що
+// перетинає інтерфейс тунелю, і ніколи — власних сокетів телефону.
+//
+// Трафік exit-node і підмереж тут НЕ маскарадиться: це робить upstream'ове
+// SNAT-правило (AddSNATRule, за subnetRouteMark), коли ввімкнено
+// --snat-subnet-routes, а безумовна копія перекривала б прапорець — саме так
+// natlab'івський TestSiteToSite і спіймав цей форк.
+func (i *iptablesRunner) addAndroidBase(ipt iptablesInterface, fam, tunname string, natAvailable bool) error {
+	// Мітимо до маршрутизації, а не лише у FORWARD, як робить upstream, щоб
+	// policy-правила на основі fwmark бачили її для трафіку, що прийшов з тунелю.
+	args := []string{"-i", tunname, "-j", "MARK", "--set-mark", subnetRouteMark + "/" + fwmarkMask}
+	if err := ipt.Append("mangle", "ts-prerouting", args...); err != nil {
+		return fmt.Errorf("adding %v in %s/mangle/ts-prerouting: %w", args, fam, err)
 	}
 
-	// MASQUERADE exit node traffic going to physical interfaces
-	args = []string{"-i", tunname, "!", "-o", tunname, "-j", "MASQUERADE"}
-	if err := i.ipt4.Append("nat", "ts-postrouting", args...); err != nil {
-		return fmt.Errorf("adding %v in v4/nat/ts-postrouting: %w", args, err)
+	if hotspotShare() && natAvailable {
+		args = []string{"-o", tunname, "-j", "MASQUERADE"}
+		if err := ipt.Append("nat", "ts-postrouting", args...); err != nil {
+			return fmt.Errorf("adding %v in %s/nat/ts-postrouting: %w", args, fam, err)
+		}
 	}
 
-	// Allow hotspot clients to access Tailscale network
-	args = []string{"-o", tunname, "-j", "MASQUERADE"}
-	if err := i.ipt4.Append("nat", "ts-postrouting", args...); err != nil {
-		return fmt.Errorf("adding %v in v4/nat/ts-postrouting: %w", args, err)
+	// Обрізаємо MSS на форвардних SYN в обидва боки: ноутбук на hotspot'і шле
+	// MSS 1460 у тунель з MTU 1280, а PMTU discovery рідко переживає NAT
+	// оператора. Лише форвардний трафік (mangle FORWARD) і до реального MTU
+	// шляху — старе фіксоване 1200 у PREROUTING переписувало й власні
+	// з'єднання телефону і могло ПІДНЯТИ MSS на лінках, менших за нього.
+	for _, dir := range []string{"-i", "-o"} {
+		args = []string{dir, tunname, "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"}
+		if err := ipt.Append("mangle", "ts-forward", args...); err != nil {
+			return fmt.Errorf("adding %v in %s/mangle/ts-forward: %w", args, fam, err)
+		}
 	}
-
-	// Clamp MSS for forwarded TCP to avoid TLS failures with double-VPN/low MTU tunnels
-	args = []string{"-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--set-mss", "1200"}
-	if err := i.ipt4.Append("mangle", "ts-prerouting", args...); err != nil {
-		return fmt.Errorf("adding %v in v4/mangle/ts-prerouting: %w", args, err)
-	}
-
 	return nil
 }
 
@@ -403,35 +429,7 @@ func (i *iptablesRunner) addBase6(tunname string) error {
 		return fmt.Errorf("adding %v in v6/filter/ts-forward: %w", args, err)
 	}
 
-	// Mark packets from subnetRouter, need enable IP6 NAT zcat /proc/config.gz | grep IP6_NF_NAT 2>/dev/null
-	args = []string{"-i", tunname, "-j", "MARK", "--set-mark", subnetRouteMark + "/" + fwmarkMask}
-	if err := i.ipt6.Append("mangle", "ts-prerouting", args...); err != nil {
-		return fmt.Errorf("adding %v in v6/mangle/ts-prerouting: %w", args, err)
-	}
-
-	// MASQUERADE exit node traffic going to physical interfaces
-	if i.v6NATAvailable {
-		args = []string{"-i", tunname, "!", "-o", tunname, "-j", "MASQUERADE"}
-		if err := i.ipt6.Append("nat", "ts-postrouting", args...); err != nil {
-			return fmt.Errorf("adding %v in v6/nat/ts-postrouting: %w", args, err)
-		}
-	}
-
-	// Allow hotspot clients to access Tailscale network
-	if i.v6NATAvailable {
-		args = []string{"-o", tunname, "-j", "MASQUERADE"}
-		if err := i.ipt6.Append("nat", "ts-postrouting", args...); err != nil {
-			return fmt.Errorf("adding %v in v6/nat/ts-postrouting: %w", args, err)
-		}
-	}
-
-	// Clamp MSS for forwarded TCP to avoid TLS failures with double-VPN/low MTU tunnels
-	args = []string{"-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--set-mss", "1200"}
-	if err := i.ipt6.Append("mangle", "ts-prerouting", args...); err != nil {
-		return fmt.Errorf("adding %v in v6/mangle/ts-prerouting: %w", args, err)
-	}
-
-	return nil
+	return i.addAndroidBase(i.ipt6, "v6", tunname, i.v6NATAvailable)
 }
 
 // DelChains removes the custom Tailscale chains from netfilter via iptables.
@@ -444,6 +442,9 @@ func (i *iptablesRunner) DelChains() error {
 			return err
 		}
 		if err := delChain(ipt, "mangle", "ts-prerouting"); err != nil {
+			return err
+		}
+		if err := delChain(ipt, "mangle", "ts-forward"); err != nil {
 			return err
 		}
 	}
@@ -482,6 +483,9 @@ func (i *iptablesRunner) DelBase() error {
 		if err := del(ipt, "mangle", "ts-prerouting"); err != nil {
 			return err
 		}
+		if err := del(ipt, "mangle", "ts-forward"); err != nil {
+			return err
+		}
 	}
 	for _, ipt := range i.getNATTables() {
 		if err := del(ipt, "nat", "ts-postrouting"); err != nil {
@@ -503,6 +507,9 @@ func (i *iptablesRunner) DelHooks(logf logger.Logf) error {
 			return err
 		}
 		if err := delTSHook(ipt, "mangle", "PREROUTING", logf); err != nil {
+			return err
+		}
+		if err := delTSHook(ipt, "mangle", "FORWARD", logf); err != nil {
 			return err
 		}
 	}
