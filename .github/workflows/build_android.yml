@@ -1,23 +1,23 @@
 name: "vau-release"
 
-# Builds the android tailscaled for this fork and publishes a SIGNED release.
+# Збирає android-tailscaled цього форку і публікує ПІДПИСАНИЙ реліз.
 #
-# Every third-party action is pinned to a commit SHA, not a tag: a tag can be
-# moved to different code, and this workflow builds a binary that later runs as
-# root on a phone. The NDK and UPX actions are gone entirely — the build is
-# CGO-free (no NDK needed) and UPX only inflates RSS on a handset that already
-# hits LOW_MEMORY (see docs/vau/AUDIT.md, M10).
+# Кожен сторонній action прибитий до SHA коміту, а не до тегу: тег можна
+# пересунути на інший код, а цей workflow збирає бінарник, який потім працює
+# як root на телефоні. Action'и NDK та UPX прибрано зовсім — збірка без CGO
+# (NDK не потрібен), а UPX лише роздуває RSS на телефоні, який і так упирається
+# в LOW_MEMORY (див. docs/vau/AUDIT.md, M10).
 #
-# arm64 only. Go's android/arm (32-bit) port cannot link without cgo —
-# "android/arm requires external (cgo) linking, but cgo is not enabled" — so a
-# 32-bit build would mean dragging the NDK back in for an architecture no
-# target device has (both handsets are aarch64).
+# Лише arm64. Порт Go android/arm (32-біт) не лінкується без cgo —
+# «android/arm requires external (cgo) linking, but cgo is not enabled» — тож
+# 32-бітна збірка означала б тягнути NDK назад заради архітектури, якої немає
+# на жодному цільовому пристрої (обидва телефони aarch64).
 
 on:
   workflow_dispatch:
     inputs:
       prerelease:
-        description: "Mark the release as a pre-release"
+        description: "Позначити реліз як pre-release"
         type: boolean
         default: false
   push:
@@ -45,15 +45,25 @@ jobs:
       - name: Install minisign
         run: sudo apt-get update -qq && sudo apt-get install -y -qq minisign
 
-      - name: Guard — the self-updater must stay out of the build
+      - name: Гейт — самооновлювач не має потрапити в збірку
         run: |
           set -euo pipefail
-          # The `clientupdate` feature tag is what puts `tailscale update` in the
-          # binary: it downloads tailscaled from a third-party repo, unsigned,
-          # and installs it 0777 (docs/vau/AUDIT.md, C1). If someone drops this
-          # from the remove list, the release must fail here, not on a phone.
-          grep -q 'clientupdate' scripts/android.sh
-          echo "ok: clientupdate is in the remove list"
+          # Feature-тег `clientupdate` — це те, що кладе `tailscale update` у
+          # бінарник: він завантажує tailscaled зі стороннього репозиторію без
+          # підпису і ставить його 0777 (docs/vau/AUDIT.md, C1). Якщо хтось
+          # прибере його зі списку remove, реліз має впасти тут, а не на телефоні.
+          # Прив'язано до присвоєння `remove=`: голий grep збігся б і з
+          # коментарем над ним і пройшов би без тегу.
+          grep -qE '^\s*local remove=".*\bclientupdate\b' scripts/android.sh
+          echo "ok: clientupdate є у списку remove"
+          # І сирці Android-самооновлювача теж не мають повернутись: їх
+          # відсікає лише `//go:build android`, тож щойно якийсь файл їх
+          # імпортує — шлях встановлення з 0777 знову в бінарнику.
+          if ls clientupdate/clientupdate_android.go clientupdate/clientupdate_notandroid.go 2>/dev/null | grep -q .; then
+            echo "clientupdate/clientupdate_android.go знову в дереві" >&2
+            exit 1
+          fi
+          echo "ok: сирців android-самооновлювача немає"
 
       - name: Build arm64 (no cgo)
         run: ./scripts/android.sh build --nocgo arm64
@@ -62,13 +72,13 @@ jobs:
         run: |
           set -euo pipefail
           eval "$(./build_dist.sh shellvars)"
-          # versionCode must only ever grow, must not depend on how the repo was
-          # cloned, and must differ between two builds made close together.
-          # A commit count fails the second test (shallow clone: 20, full
-          # history: 10631). yymmddHH failed the third — two builds in the same
-          # hour produced the same number, and the phone then refuses the newer
-          # one as "not newer". Minutes since 2026-01-01 satisfies all three and
-          # stays six digits for decades, far inside int32.
+          # versionCode має лише зростати, не залежати від того, як клоновано
+          # репозиторій, і відрізнятися для двох збірок, зроблених близько в
+          # часі. Кількість комітів провалює другу вимогу (shallow clone: 20,
+          # повна історія: 10631). yymmddHH провалив третю — дві збірки за одну
+          # годину дали однакове число, і телефон відмовив новішій як «не
+          # новіша». Хвилини від 2026-01-01 задовольняють усі три і лишаються
+          # шестизначними десятиліттями, далеко в межах int32.
           VAU_N=$(( ( $(date -u +%s) - 1767225600 ) / 60 ))
           MOD_VERSION="v${VERSION_SHORT}-vau${VAU_N}"
           TAG="v${VERSION_SHORT}-vau"
@@ -79,10 +89,10 @@ jobs:
           tar -czf "tailscale_${VERSION_SHORT}_arm64.tgz" --transform='s/tailscaled.arm64/tailscaled/' tailscaled.arm64
           cd ..
 
-          # The KSU module ships the binary inside the zip, so a fresh install
-          # works offline and an update is one file to fetch and verify. The
-          # installer moves it into /data/adb/tailscale and drops it from the
-          # module directory, so the device keeps a single copy.
+          # KSU-модуль несе бінарник усередині zip, тож свіже встановлення
+          # працює офлайн, а оновлення — це один файл, який треба отримати й
+          # перевірити. Встановлювач переносить його в /data/adb/tailscale і
+          # прибирає з каталогу модуля, тож на пристрої лишається одна копія.
           rm -rf dist/module
           mkdir -p dist/module/bin
           cp module/module.prop module/service.sh module/uninstall.sh \
@@ -90,8 +100,8 @@ jobs:
              module/skip_mount dist/module/
           cp -r module/webroot dist/module/
           cp dist/tailscaled.arm64 dist/module/bin/tailscaled
-          # versionCode must only ever grow; the commit count does that without
-          # a file anyone has to remember to bump.
+          # versionCode лише зростає — VAU_N робить це без файлу, який хтось
+          # має пам'ятати підняти.
           sed -i "s/^version=.*/version=${MOD_VERSION}/" dist/module/module.prop
           sed -i "s/^versionCode=.*/versionCode=${VAU_N}/" dist/module/module.prop
           ZIP="vau-tailscale-${MOD_VERSION}.zip"
@@ -110,10 +120,10 @@ jobs:
             "tailscale commit: ${GITHUB_SHA}" \
             "build: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/CHANGELOG.txt
 
-          # Checksums cover everything that ships and are produced BEFORE
-          # signing, so the signature covers the same set. A SHA256SUMS naming
-          # files that are not release assets makes `sha256sum -c` fail for
-          # everyone who downloads it.
+          # Контрольні суми покривають усе, що йде в реліз, і рахуються ДО
+          # підписання, щоб підпис покривав той самий набір. SHA256SUMS, у якому
+          # згадано файли, що не є asset'ами релізу, ламає `sha256sum -c` усім,
+          # хто його завантажує.
           cd dist
           sha256sum tailscale_*.tgz "$ZIP" update.json CHANGELOG.txt > SHA256SUMS
           ls -lh
@@ -126,8 +136,8 @@ jobs:
       - name: Verify the signatures with the published public key
         run: |
           set -euo pipefail
-          # Proves the release verifies with the key people are told to use,
-          # rather than merely with whatever key CI happened to sign with.
+          # Доводить, що реліз перевіряється ключем, який людям кажуть
+          # використовувати, а не просто тим, яким CI випадково підписав.
           PUB=$(grep -m1 '^RW' docs/BUILD.md)
           for sig in dist/*.minisig; do
             minisign -Vm "${sig%.minisig}" -P "$PUB"
@@ -139,14 +149,15 @@ jobs:
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-vau', env.VERSION_SHORT) }}
         run: |
           set -euo pipefail
-          # The release tag is reused and the upload action only ADDS files, so
-          # a previous build's zip stays attached — no longer covered by the
-          # current SHA256SUMS, yet still installable by anyone who scrolls the
-          # asset list. Remove every module zip that is not the one just built.
+          # Тег релізу перевикористовується, а action завантаження лише ДОДАЄ
+          # файли, тож zip попередньої збірки лишається прикріпленим — уже не
+          # покритий поточним SHA256SUMS, але досі встановлюваний для будь-кого,
+          # хто прогорне список asset'ів. Прибираємо кожен zip модуля, крім
+          # щойно зібраного.
           if gh release view "$TAG" --json assets --jq '.assets[].name' > /tmp/assets.txt 2>/dev/null; then
             grep '^vau-tailscale-.*\.zip$' /tmp/assets.txt | grep -v -x -F "$ZIP" \
               | while read -r a; do
-                  echo "removing stale asset: $a"
+                  echo "видаляю застарілий asset: $a"
                   gh release delete-asset "$TAG" "$a" -y || true
                 done
           fi
