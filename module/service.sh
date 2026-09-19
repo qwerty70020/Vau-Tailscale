@@ -2,58 +2,60 @@
 #
 # Vau Tailscale — KernelSU late_start service
 # ---------------------------------------------------------------------------
-# Starts tailscaled as root and keeps it alive. Everything it needs lives in
-# /data/adb/tailscale, which is DE storage: readable before the owner's first
-# unlock. That is the entire point of this module — the Tailscale app and
-# Termux both live in CE storage and cannot run until a PIN is entered, so a
-# phone that reboots unattended is unreachable until somebody walks over to it.
+# Запускає tailscaled від root і не дає йому померти. Усе потрібне лежить у
+# /data/adb/tailscale — це DE-сховище, доступне ще до першого розблокування
+# власником. У цьому весь сенс модуля: і застосунок Tailscale, і Termux живуть
+# у CE-сховищі й не можуть стартувати, доки не введено PIN, тож телефон, що
+# перезавантажився без нагляду, недосяжний, поки хтось до нього не підійде.
 #
-# Default mode is userspace networking: no tailscale0 interface, no ip rules,
-# no iptables. It therefore cannot take the phone's network down from far away,
-# and it does not fight the Tailscale app for the single Android VPN slot. The
-# kernel-TUN mode exists (TUN_MODE=kernel) but must not be enabled before the
-# DNS and routing findings in docs/vau/AUDIT.md are fixed.
+# Типовий режим — userspace networking: без інтерфейсу tailscale0, без ip rule,
+# без iptables. Тому він не може здалеку покласти мережу телефону й не б'ється
+# із застосунком Tailscale за єдиний VPN-слот Android. Режим kernel-TUN існує
+# (TUN_MODE=kernel), але його не можна вмикати, доки не закриті знахідки щодо
+# DNS і маршрутизації з docs/vau/AUDIT.md.
 #
-# !!! KEEP THIS FILE LF-ONLY (no CRLF) AND DO NOT ZIP IT ON WINDOWS !!!
+# !!! ТРИМАЙ ЦЕЙ ФАЙЛ ЛИШЕ З LF (без CRLF) І НЕ ПАКУЙ ЙОГО В ZIP НА WINDOWS !!!
 # ---------------------------------------------------------------------------
 
 MODDIR=${0%/*}
 
-# ----- tunables ---------------------------------------------------------------
-# Defaults live here; a handset keeps its own values in $CONF, outside the
-# module directory, where neither an update nor a reinstall can reach them.
+# ----- налаштування -----------------------------------------------------------
+# Тут — типові значення; свої телефон тримає у $CONF, поза каталогом модуля,
+# куди не дістає ні оновлення, ні перевстановлення.
 STATE=/data/adb/tailscale
 CONF=/data/adb/vau-tailscale.conf
 LOG=/data/local/tmp/vau_tailscale.log
 
-TUN_MODE=userspace       # userspace = no interface/routes/iptables; kernel = full TUN
-EXTRA_ARGS=""            # extra tailscaled flags, e.g. --socks5-server=127.0.0.1:1055
-HEALTH_INTERVAL=60       # seconds between health checks
-HEALTH_FAILS=3           # failed checks in a row before the daemon is restarted
-RESTART_MIN=5            # first restart delay, seconds
-RESTART_MAX=300          # cap for the exponential backoff, seconds
-HEALTHY_AFTER=600        # a run this long counts as healthy and resets the backoff
-DAEMON_LOG_MAX_KB=2048   # rotate the daemon log above this size
+TUN_MODE=userspace       # userspace = без інтерфейсу/маршрутів/iptables; kernel = повний TUN
+EXTRA_ARGS=""            # додаткові прапорці tailscaled, напр. --socks5-server=127.0.0.1:1055
+HOTSPOT_SHARE=0          # лише kernel: 1 = роздавати tailnet клієнтам точки доступу (MASQUERADE на tailscale0)
+HEALTH_INTERVAL=60       # секунд між перевірками здоров'я
+HEALTH_FAILS=3           # стільки провалених перевірок поспіль — і демон перезапускається
+RESTART_MIN=5            # перша затримка перезапуску, секунд
+RESTART_MAX=300          # стеля експоненційного відкату, секунд
+HEALTHY_AFTER=600        # запуск, що прожив стільки, вважається здоровим і скидає відкат
+DAEMON_LOG_MAX_KB=2048   # ротувати лог демона понад цей розмір
 
-# A run shorter than this is a "fast failure" — the shape of a binary that
-# cannot start at all, as opposed to one that ran and later died.
+# Запуск, коротший за це, — «швидкий провал»: так поводиться бінарник, який
+# узагалі не може стартувати, на відміну від того, що працював і потім упав.
 FAST_FAIL_SECS=60
-# After this many fast failures in a row the previous binary is put back. An
-# update that breaks the daemon otherwise leaves the phone unreachable, and the
-# only way back in is the very thing that just broke.
+# Після стількох швидких провалів поспіль повертається попередній бінарник.
+# Інакше оновлення, що ламає демон, лишає телефон недосяжним, а єдиний шлях
+# усередину — саме те, що щойно зламалось.
 ROLLBACK_FAILS=3
 
-# Optional: a tailnet address to ping as a REAL reachability check. An answering
-# socket proves the daemon is alive, not that the node can talk to anyone — on
-# 2026-09-10 an empty tailnet policy left this node perfectly responsive and
-# completely cut off. Set it to the peer that matters, e.g. the home server.
+# Необов'язково: адреса в tailnet, яку пінгувати як СПРАВЖНЮ перевірку
+# досяжності. Сокет, що відповідає, доводить лише, що демон живий, а не що
+# вузол може з кимось говорити: 2026-09-10 порожня політика tailnet лишила цей
+# вузол цілком чуйним і цілком відрізаним. Постав сюди peer, який важливий,
+# наприклад домашній сервер.
 HEALTH_PEER=""
-# Optional: Uptime Kuma push URL, called while the node is healthy. Silence is
-# the signal: a phone that is switched off cannot report that it is switched
-# off, so absence of a push has to be what raises the alarm.
+# Необов'язково: push-URL Uptime Kuma, який смикається, поки вузол здоровий.
+# Сигнал — тиша: вимкнений телефон не може повідомити, що він вимкнений, тож
+# тривогу має здіймати саме відсутність push.
 KUMA_PUSH_URL=""
-# host:port of the daemon's own SOCKS proxy, when the push has to travel over
-# the tailnet and the VPN app is not carrying it.
+# host:port власного SOCKS-проксі демона, коли push має йти через tailnet,
+# а VPN-застосунок його не несе.
 KUMA_VIA_SOCKS=""
 
 [ -f "$CONF" ] && . "$CONF"
@@ -70,16 +72,16 @@ HLTFILE="$STATE/health.pid"
 
 log() { echo "[$(date '+%m-%d %H:%M:%S')] $*" >> "$LOG"; }
 
-# History records TRANSITIONS only — up, down, rollback, restart. A line here
-# means something changed, which is what makes "it dropped last night" a
-# question with an answer instead of a memory.
+# Історія фіксує ЛИШЕ ПЕРЕХОДИ — піднявся, впав, відкат, перезапуск. Рядок тут
+# означає, що щось змінилося; саме це робить «уночі відвалилось» питанням із
+# відповіддю, а не спогадом.
 hist() { echo "[$(date '+%m-%d %H:%M:%S')] $*" >> "$HIST"; }
 
-# ----- helpers ----------------------------------------------------------------
+# ----- допоміжні функції ------------------------------------------------------
 
 tun_flag() {
     case "$TUN_MODE" in
-        kernel) echo "tailscale0,userspace-networking" ;;   # try TUN, fall back
+        kernel) echo "tailscale0,userspace-networking" ;;   # спробувати TUN, інакше відкат
         *)      echo "userspace-networking" ;;
     esac
 }
@@ -92,14 +94,15 @@ rotate_log() {
     return 0
 }
 
-# The daemon is given a CLEAN environment on purpose. tailscaled hands its own
-# environment down to Tailscale SSH sessions, and it resolves helper binaries
-# through PATH; a PATH inherited from a terminal app would mean root running
-# binaries that a non-root uid can rewrite (docs/vau/AUDIT.md, H3/H5).
+# Демон навмисно отримує ЧИСТЕ оточення. tailscaled передає своє оточення
+# сесіям Tailscale SSH і шукає допоміжні бінарники через PATH; PATH,
+# успадкований від термінального застосунку, означав би, що root запускає
+# бінарники, які може переписати не-root uid (docs/vau/AUDIT.md, H3/H5).
 start_daemon() {
     rotate_log "$DLOG" "$DAEMON_LOG_MAX_KB"
     # shellcheck disable=SC2086
-    env -i PATH=/system/bin:/system/xbin HOME="$STATE" TMPDIR=/data/local/tmp \
+    env -i PATH=/system/bin HOME="$STATE" TMPDIR=/data/local/tmp \
+        TS_ANDROID_HOTSPOT_SHARE="$([ "$HOTSPOT_SHARE" = 1 ] && echo true || echo false)" \
         "$BIN" \
         --statedir="$STATE" \
         --socket="$SOCK" \
@@ -117,15 +120,15 @@ backend_state() {
         | head -1 | sed 's/.*"\([^"]*\)"$/\1/'
 }
 
-# Health is judged by an ANSWER, not by a live pid, and by the RIGHT answer.
-# "The socket replied" was the check here until an empty tailnet policy proved
-# it worthless: status answered instantly while nothing could reach the node.
+# Здоров'я судимо за ВІДПОВІДДЮ, а не за живим pid, і за ПРАВИЛЬНОЮ відповіддю.
+# «Сокет відповів» було перевіркою тут, доки порожня політика tailnet не довела
+# її марність: status відповідав миттєво, а до вузла не міг дістатись ніхто.
 health_ok() {
     st=$(backend_state)
     [ "$st" = "Running" ] || { health_why="BackendState=$st"; return 1; }
     if [ -n "$HEALTH_PEER" ]; then
         if ! timeout 20 "$CLI" --socket="$SOCK" ping -c 1 -- "$HEALTH_PEER" >/dev/null 2>&1; then
-            health_why="no answer from $HEALTH_PEER"
+            health_why="немає відповіді від $HEALTH_PEER"
             return 1
         fi
     fi
@@ -133,8 +136,8 @@ health_ok() {
     return 0
 }
 
-# Never let monitoring break the thing it monitors: every failure here is
-# swallowed, and the push is best-effort.
+# Моніторинг ніколи не має ламати те, що моніторить: кожна помилка тут
+# ковтається, а push — best-effort.
 push_kuma() {
     [ -n "$KUMA_PUSH_URL" ] || return 0
     if [ -n "$KUMA_VIA_SOCKS" ]; then
@@ -153,11 +156,11 @@ health_loop() {
         sleep "$HEALTH_INTERVAL"
         [ -f "$PIDFILE" ] || continue
         pid=$(cat "$PIDFILE" 2>/dev/null)
-        kill -0 "$pid" 2>/dev/null || continue   # supervisor handles a dead pid
+        kill -0 "$pid" 2>/dev/null || continue   # мертвим pid займається supervisor
         if health_ok; then
             if [ "$healthy" != "yes" ]; then
-                hist "healthy (BackendState=Running${HEALTH_PEER:+, $HEALTH_PEER reachable})"
-                [ "$fails" -gt 0 ] && log "health: recovered after $fails miss(es)"
+                hist "healthy (BackendState=Running${HEALTH_PEER:+, $HEALTH_PEER досяжний})"
+                [ "$fails" -gt 0 ] && log "health: відновився після $fails пропуск(ів)"
                 healthy=yes
             fi
             fails=0
@@ -170,8 +173,8 @@ health_loop() {
                 healthy=no
             fi
             if [ "$fails" -ge "$HEALTH_FAILS" ]; then
-                log "health: restarting the daemon (pid $pid) — $health_why"
-                hist "restart forced by health check: $health_why"
+                log "health: перезапускаю демон (pid $pid) — $health_why"
+                hist "перезапуск за результатом перевірки здоров'я: $health_why"
                 kill "$pid" 2>/dev/null
                 fails=0
             fi
@@ -179,20 +182,20 @@ health_loop() {
     done
 }
 
-# Put the previous binary back. Used when a fresh one cannot stay up: the point
-# of this module is remote access, so a broken update must not be able to take
-# that away until someone walks over to the phone.
+# Повернути попередній бінарник. Використовується, коли свіжий не може
+# втриматись: сенс модуля — віддалений доступ, тож зламане оновлення не має
+# права його відібрати, доки хтось не підійде до телефону.
 roll_back() {
-    [ -x "$PREV" ] || { log "rollback: no $PREV to fall back to"; return 1; }
+    [ -x "$PREV" ] || { log "rollback: немає $PREV, куди відкочуватись"; return 1; }
     if cmp -s "$BIN" "$PREV"; then
-        log "rollback: previous binary is identical — not a binary problem"
+        log "rollback: попередній бінарник ідентичний — проблема не в бінарнику"
         return 1
     fi
     cp -f "$PREV" "$BIN.rb" 2>/dev/null || return 1
     chmod 0755 "$BIN.rb" 2>/dev/null
     mv -f "$BIN.rb" "$BIN" 2>/dev/null || return 1
-    log "ROLLBACK: restored the previous tailscaled after repeated fast failures"
-    hist "ROLLBACK to previous binary"
+    log "ROLLBACK: повернуто попередній tailscaled після повторних швидких провалів"
+    hist "ROLLBACK до попереднього бінарника"
     return 0
 }
 
@@ -202,7 +205,7 @@ supervise() {
     while true; do
         t0=$(date +%s)
         start_daemon
-        log "tailscaled started (pid $daemon_pid, tun=$(tun_flag))"
+        log "tailscaled запущено (pid $daemon_pid, tun=$(tun_flag))"
         hist "daemon start (pid $daemon_pid)"
         wait "$daemon_pid"
         rc=$?
@@ -211,11 +214,11 @@ supervise() {
 
         if [ "$up" -lt "$FAST_FAIL_SECS" ]; then
             fastfails=$((fastfails + 1))
-            log "tailscaled exited rc=$rc after ${up}s — fast failure $fastfails/$ROLLBACK_FAILS"
+            log "tailscaled вийшов rc=$rc через ${up}s — швидкий провал $fastfails/$ROLLBACK_FAILS"
         else
             fastfails=0
             [ "$up" -ge "$HEALTHY_AFTER" ] && delay=$RESTART_MIN
-            log "tailscaled exited rc=$rc after ${up}s — restarting in ${delay}s"
+            log "tailscaled вийшов rc=$rc через ${up}s — перезапуск за ${delay}s"
         fi
 
         if [ "$fastfails" -ge "$ROLLBACK_FAILS" ] && roll_back; then
@@ -230,20 +233,20 @@ supervise() {
 }
 
 stop_all() {
-    # Supervisor first, then the health loop, then the daemon: kill the daemon
-    # while the supervisor is still up and it is restarted a second later,
-    # which looks exactly like a stop that did not work.
+    # Спершу supervisor, потім health-цикл, потім демон: убий демон, поки
+    # supervisor ще живий, — і за секунду його перезапустять, що виглядає
+    # точнісінько як зупинка, яка не спрацювала.
     for f in "$SUPFILE" "$HLTFILE" "$PIDFILE"; do
         [ -f "$f" ] || continue
         pid=$(cat "$f" 2>/dev/null)
         [ -n "$pid" ] && kill "$pid" 2>/dev/null
         rm -f "$f"
     done
-    log "stopped by request"
-    hist "stopped by request"
+    log "зупинено на вимогу"
+    hist "зупинено на вимогу"
 }
 
-# ----- entry points -----------------------------------------------------------
+# ----- точки входу ------------------------------------------------------------
 
 case "$1" in
     stop)
@@ -258,27 +261,30 @@ case "$1" in
         if health_ok; then echo "healthy"; exit 0; else echo "unhealthy: $health_why"; exit 1; fi
         ;;
     rollback)
-        roll_back && echo "rolled back, restart the daemon to use it"
+        roll_back && echo "відкочено; перезапусти демон, щоб він підхопив бінарник"
         exit $?
         ;;
 esac
 
 mkdir -p "$STATE" && chmod 700 "$STATE"
 rotate_log "$HIST" 256
+# Лог модуля отримує рядок на кожну провалену перевірку; телефон, що провів
+# ніч офлайн, пише їх сотнями, а більше ніхто його ніколи не підрізав.
+rotate_log "$LOG" 512
 
 if [ ! -x "$BIN" ]; then
-    log "no tailscaled at $BIN — nothing to run"
+    log "немає tailscaled у $BIN — нічого запускати"
     exit 0
 fi
 
 if [ -f "$SUPFILE" ] && kill -0 "$(cat "$SUPFILE" 2>/dev/null)" 2>/dev/null; then
-    log "supervisor already running — nothing to do"
+    log "supervisor уже працює — нічого робити"
     exit 0
 fi
 
-# Deliberately NOT waiting for sys.boot_completed or for the first unlock: the
-# whole value of this module is being on the tailnet before either happens.
-log "=== boot: starting supervisor (tun=$(tun_flag)) ==="
+# Навмисно НЕ чекаємо ні sys.boot_completed, ні першого розблокування: уся
+# цінність модуля — бути в tailnet раніше, ніж станеться будь-що з цього.
+log "=== boot: запускаю supervisor (tun=$(tun_flag)) ==="
 hist "=== boot ==="
 supervise &
 echo $! > "$SUPFILE"
