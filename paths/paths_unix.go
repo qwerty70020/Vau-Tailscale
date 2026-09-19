@@ -34,14 +34,7 @@ func statePath() string {
 	case "aix":
 		return "/var/tailscale/tailscaled.state"
 	case "android":
-		if fi, err := os.Stat("/data/adb/tailscale"); err == nil && fi.IsDir() {
-			return "/data/adb/tailscale/tailscaled.state"
-		}
-		prefix := os.Getenv("PREFIX")
-		if prefix == "" {
-			return filepath.Join(os.TempDir(), "tailscale", "tailscaled.state")
-		}
-		return filepath.Join(prefix, "var", "lib", "tailscale", "tailscaled.state")
+		return filepath.Join(AndroidBaseDir(), "tailscaled.state")
 	default:
 		return ""
 	}

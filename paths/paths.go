@@ -19,18 +19,26 @@ import (
 // containing a directory we can read/write in.
 var AppSharedDir syncs.AtomicValue[string]
 
+// AndroidBaseDir — кореневий каталог даних tailscaled на Android (Vau).
+// Пріоритет: /data/adb/tailscale, якщо його створив root-модуль;
+// інакше $PREFIX/var/lib/tailscale (Termux); інакше каталог у TempDir.
+// Єдине місце, де ця логіка живе: сокет, state, логи, сертифікати
+// та resolv.conf беруть звідси свої підкаталоги.
+func AndroidBaseDir() string {
+	if fi, err := os.Stat("/data/adb/tailscale"); err == nil && fi.IsDir() {
+		return "/data/adb/tailscale"
+	}
+	if prefix := os.Getenv("PREFIX"); prefix != "" {
+		return filepath.Join(prefix, "var", "lib", "tailscale")
+	}
+	return filepath.Join(os.TempDir(), "tailscale")
+}
+
 // DefaultTailscaledSocket returns the path to the tailscaled Unix socket
 // or the empty string if there's no reasonable default.
 func DefaultTailscaledSocket() string {
 	if runtime.GOOS == "android" {
-		if fi, err := os.Stat("/data/adb/tailscale"); err == nil && fi.IsDir() {
-			return "/data/adb/tailscale/tailscaled.sock"
-		}
-		prefix := os.Getenv("PREFIX")
-		if prefix == "" {
-			return filepath.Join(os.TempDir(), "tailscale", "tailscaled.sock")
-		}
-		return filepath.Join(prefix, "var", "run", "tailscaled.sock")
+		return filepath.Join(AndroidBaseDir(), "tailscaled.sock")
 	}
 	if runtime.GOOS == "windows" {
 		return `\\.\pipe\ProtectedPrefix\Administrators\Tailscale\tailscaled`
