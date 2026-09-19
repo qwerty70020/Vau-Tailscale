@@ -31,6 +31,29 @@
 
 ---
 
+## Стан на 2026-09-19 (гілка `android-v1.102.4`)
+
+Повторний аудит усього форку + причина щоденних червоних збірок. Закрито в коді (усе нижче — у робочому дереві цієї дати):
+
+| Пункт | Що зроблено |
+|---|---|
+| C1 | `clientupdate/clientupdate_android.go` і stub видалено фізично, `case "android"` з `clientupdate.go` прибрано; гейт у `vau-release` тепер прив'язаний до рядка `local remove=` і перевіряє відсутність файлів. |
+| C2 | `GetBaseConfig` на Android читає системні резолвери з `dumpsys connectivity` (`DnsAddresses`), Tailscale-адреси й loopback відкидаються. |
+| C3 / M1 / M3 | DNAT-правила: `-m mark ! --mark 0x10000000/0x1e000000` (bypass-mark форвардера), `-o tailscale0` замість `tun+`, `AppendUnique`. IPv6-обхід закрито тими самими правилами в `ip6tables`. Не перевірено на телефоні — kernel-режим досі вимкнено. |
+| H2 | `setGroups`: android-виняток прибрано, помилка `Setgroups` знову фатальна. |
+| H3 | Мертве `cmd.Dir = $HOME` для android видалено (інкубатор сам робить `Chdir(homeDir)`). |
+| H4 | `shouldAttemptLoginShell` на android завжди `false` (`login` там немає); тест `incubator_android_test.go`. |
+| H5 | `getprop` → `/system/bin/getprop`; PATH демона в `service.sh` без неіснуючого `/system/xbin`. |
+| H6 / M4 | Безумовний `-i tailscale0 ! -o tailscale0 -j MASQUERADE` прибрано — саме він ламав `TestSiteToSite` у `natlab-test` (правило потрапляло в linux/amd64). Роздача точки доступу тепер за `TS_ANDROID_HOTSPOT_SHARE` (`HOTSPOT_SHARE=1` у `/data/adb/vau-tailscale.conf`). MSS: `--clamp-mss-to-pmtu` лише на `tailscale0`, а не 1200 на весь трафік. |
+| — | `NewOSConfigurator("")` у userspace-режимі повертає no-op менеджер: раніше кожен netmap викликав `iptables -D` ×4. |
+| — | `TS_ASSUME_NETWORK_UP_FOR_TEST` (envknob на кожен `AnyInterfaceUp`) прибрано. |
+| — | П'ять копій логіки `/data/adb/tailscale → $PREFIX → TempDir` замінено на `paths.AndroidBaseDir()`; `LogsDir` тепер створює теку. |
+| — | `update.sh`: код виходу інсталятора більше не губиться в `| tail -5`. WebUI: `up` після першого входу — без прапорців (інакше `--reset`); перемикачі показують справжні prefs із `tailscaled.state`. |
+
+Досі відкрито: M5 (петля 100.64/10), M6 (застаріла таблиця exit-node), M7 (`setBypassMark` без маршруту за замовчуванням), M2 (TCP/53 у netstack відповідає через UDP) — усе лише для kernel-режиму. Перш ніж вмикати `TUN_MODE=kernel`, потрібна перевірка C3 на телефоні трьома `dig` (tailnet-резолвер, публічний, через exit-node).
+
+---
+
 ## CRITICAL
 
 ### C1. Автообновление: root-бинарник из стороннего репозитория, без подписи ✅/🔍
