@@ -176,7 +176,8 @@ func (i Interface) Addrs() ([]net.Addr, error) {
 	if i.Interface == nil {
 		return nil, nil
 	}
-	// use the netmon package to get the addresses
+	// На Android net.Interface.Addrs() не працює без netlink-дозволів — беремо
+	// адреси через anet
 	if runtime.GOOS == "android" {
 		return anet.InterfaceAddrsByInterface(i.Interface)
 	}
@@ -540,9 +541,6 @@ func (s *State) AnyInterfaceUp() bool {
 	if runtime.GOOS == "js" || runtime.GOOS == "tamago" {
 		return true
 	}
-	if envknob.Bool("TS_ASSUME_NETWORK_UP_FOR_TEST") {
-		return true
-	}
 	return s != nil && (s.HaveV4 || s.HaveV6)
 }
 
@@ -851,7 +849,8 @@ func netInterfaces() ([]Interface, error) {
 	if altNetInterfaces != nil {
 		return altNetInterfaces()
 	}
-	// Use the netmon package to get the addresses
+	// На Android net.Interfaces() не працює без netlink-дозволів — беремо
+	// список через anet
 	if runtime.GOOS == "android" {
 		ifs, err := anet.Interfaces()
 		if err != nil {

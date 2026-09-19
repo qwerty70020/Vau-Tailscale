@@ -111,8 +111,9 @@ func controlC(network, address string, c syscall.RawConn) error {
 }
 
 func setBypassMark(fd uintptr) error {
-	// Skip when no default route, this will prevent connect: network is unreachable
-	// Example case: force use HTTP_PROXY / HTTPS_PROXY in device without default route / internet route.
+	// Без типового маршруту мітку не ставимо — інакше connect: network is
+	// unreachable. Приклад: примусовий HTTP_PROXY / HTTPS_PROXY на пристрої
+	// без типового маршруту / маршруту в інтернет.
 	_, err := netmon.DefaultRouteInterface()
 	if err != nil {
 		return nil
