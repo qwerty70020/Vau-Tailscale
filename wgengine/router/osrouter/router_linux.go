@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -378,6 +379,12 @@ func (r *linuxRouter) Up() error {
 	}
 	if err := r.upInterface(); err != nil {
 		return fmt.Errorf("bringing interface up: %w", err)
+	}
+
+	// Android: слідкувати за зміною мережі (Wi-Fi ↔ LTE), щоб правило
+	// exit-node вказувало на актуальну таблицю uplink'у.
+	if runtime.GOOS == "android" && r.netMon != nil && r.unregNetMon == nil {
+		r.unregNetMon = r.netMon.RegisterChangeCallback(r.onAndroidNetworkChange)
 	}
 
 	return nil
@@ -1513,6 +1520,13 @@ func (r *linuxRouter) addIPRules() error {
 		return err
 	}
 
+	// Android: delIPRules вище прибрав правило 13001 для СТАРОЇ таблиці
+	// uplink'у (ipRules() читає androidUplinkTable), тепер перечитуємо
+	// таблицю, щоб justAddIPRules поставив правило вже на нову.
+	if runtime.GOOS == "android" {
+		r.refreshAndroidUplinkTable()
+	}
+
 	return r.justAddIPRules()
 }
 
@@ -1649,6 +1663,9 @@ var ubntIPRules = []netlink.Rule{
 // ipRules returns the appropriate list of ip rules to be used by Tailscale. See
 // comments on baseIPRules and ubntIPRules for more details.
 func ipRules() []netlink.Rule {
+	if runtime.GOOS == "android" {
+		return androidIPRules()
+	}
 	if getDistroFunc() == distro.UBNT {
 		return ubntIPRules
 	}
@@ -1700,6 +1717,9 @@ func (r *linuxRouter) addIPRulesWithIPCommand() error {
 				"rule", "add",
 				"pref", strconv.Itoa(rule.Priority + r.ipPolicyPrefBase),
 			}
+			if rule.Invert {
+				args = append(args, "not")
+			}
 			if rule.Mark != 0 {
 				if r.fwmaskWorks() {
 					args = append(args, "fwmark", fmt.Sprintf("0x%x/%s", rule.Mark, tsconst.LinuxFwmarkMask))
@@ -1708,7 +1728,13 @@ func (r *linuxRouter) addIPRulesWithIPCommand() error {
 				}
 			}
 			if rule.Table != 0 {
-				args = append(args, "table", mustRouteTable(rule.Table).ipCmdArg())
+				if rt, ok := routeTableByNumber[rule.Table]; ok {
+					args = append(args, "table", rt.ipCmdArg())
+				} else {
+					// Таблиці netd на Android (1023 для wlan0 тощо) не мають імен у
+					// нашому реєстрі — передаємо номер.
+					args = append(args, "table", strconv.Itoa(rule.Table))
+				}
 			}
 			if rule.Type == unix.RTN_UNREACHABLE {
 				args = append(args, "type", "unreachable")
