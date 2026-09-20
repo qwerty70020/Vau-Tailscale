@@ -61,6 +61,10 @@
 
 Пастка експлуатації: `service.sh stop` по Tailscale SSH вбиває власну сесію до старту нового демона — перезапускати тільки через ADB (`setsid sh /data/adb/modules/vau_tailscale/service.sh </dev/null >/dev/null 2>&1 &`).
 
+### Health-loop і мережа, якої нема — 2026-09-20, moto
+
+Знайдено в метро: після трьох пропусків `tailscale ping` health-loop убив демон, що жив 10 годин, а далі тричі поспіль убивав нові інстанси, які чесно чекали на Wi-Fi (`link state` без `wlan0`, bootstrapDNS `network is unreachable`), і backoff доріс до 40 с. Тепер `health_ok` повертає «не рахуємо» (rc 2), коли на телефоні нема жодного default-маршруту поза тунелем або демон у `NoState`/`Starting`; запобіжник `HEALTH_STARTING_MAX` (10 перевірок при живому uplink) ловить справжнє зависання на старті. Сторож на сервері (`server/moto-watch.sh`) рахує стан на рівні телефона і звіряє з `tailscale status`, тож пише «без мережі — чекаю на мережу», а не «недоступний».
+
 ---
 
 ## CRITICAL
