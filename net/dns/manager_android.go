@@ -123,15 +123,21 @@ func (m *androidManager) setDNSRules(ipv6 bool, add bool) error {
 	// value, а біт 17 bypass-мітки лежить поза fwmark-маскою.
 	bypass := fmt.Sprintf("0x%x/%s", tsconst.LinuxBypassMarkNum&tsconst.LinuxFwmarkMaskNum, tsconst.LinuxFwmarkMask)
 
-	rules := []struct {
+	type rule struct {
 		table string
 		chain string
 		args  []string
-	}{
-		// Власні запити телефону (netd), крім форвардера tailscaled.
-		{"nat", "OUTPUT", []string{"-m", "mark", "!", "--mark", bypass, "!", "-o", m.tunName, "!", "-d", dnsIP, "-p", "udp", "--dport", "53", "-j", "DNAT", "--to-destination", "[" + dnsIP + "]:53"}},
-		// Клієнти точки доступу (tethering).
-		{"nat", "PREROUTING", []string{"!", "-i", m.tunName, "-p", "udp", "--dport", "53", "-j", "DNAT", "--to-destination", "[" + dnsIP + "]:53"}},
+	}
+	var rules []rule
+	// І UDP, і TCP: netd після таймауту UDP повторює запит по TCP, і без
+	// TCP-правила той повтор ішов повз тунель прямо в uplink (витік DNS).
+	for _, proto := range []string{"udp", "tcp"} {
+		rules = append(rules,
+			// Власні запити телефону (netd), крім форвардера tailscaled.
+			rule{"nat", "OUTPUT", []string{"-m", "mark", "!", "--mark", bypass, "!", "-o", m.tunName, "!", "-d", dnsIP, "-p", proto, "--dport", "53", "-j", "DNAT", "--to-destination", "[" + dnsIP + "]:53"}},
+			// Клієнти точки доступу (tethering).
+			rule{"nat", "PREROUTING", []string{"!", "-i", m.tunName, "-p", proto, "--dport", "53", "-j", "DNAT", "--to-destination", "[" + dnsIP + "]:53"}},
+		)
 	}
 	if !ipv6 {
 		for i := range rules {
