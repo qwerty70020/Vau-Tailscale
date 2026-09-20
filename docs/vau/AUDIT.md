@@ -39,7 +39,7 @@
 |---|---|
 | C1 | `clientupdate/clientupdate_android.go` і stub видалено фізично, `case "android"` з `clientupdate.go` прибрано; гейт у `vau-release` тепер прив'язаний до рядка `local remove=` і перевіряє відсутність файлів. |
 | C2 | `GetBaseConfig` на Android читає системні резолвери з `dumpsys connectivity` (`DnsAddresses`), Tailscale-адреси й loopback відкидаються. |
-| C3 / M1 / M3 | DNAT-правила: `-m mark ! --mark 0x10000000/0x1e000000` (bypass-mark форвардера), `-o tailscale0` замість `tun+`, `AppendUnique`. IPv6-обхід закрито тими самими правилами в `ip6tables`. Не перевірено на телефоні — kernel-режим досі вимкнено. |
+| C3 / M1 / M3 | DNAT-правила: `-m mark ! --mark 0x10000000/0x1e000000` (bypass-mark форвардера), `-o tailscale0` замість `tun+`, `AppendUnique`, і UDP, і **TCP**/53 (netd після таймауту UDP повторює по TCP — той повтор витікав повз тунель). IPv6 — ті самі правила в `ip6tables` (на ядрі nord `v6nat=false`, тому лише v4, non-fatal). Перевірено на nord у kernel-режимі 2026-09-20. |
 | H2 | `setGroups`: android-виняток прибрано, помилка `Setgroups` знову фатальна. |
 | H3 | Мертве `cmd.Dir = $HOME` для android видалено (інкубатор сам робить `Chdir(homeDir)`). |
 | H4 | `shouldAttemptLoginShell` на android завжди `false` (`login` там немає); тест `incubator_android_test.go`. |
@@ -50,13 +50,15 @@
 | — | П'ять копій логіки `/data/adb/tailscale → $PREFIX → TempDir` замінено на `paths.AndroidBaseDir()`; `LogsDir` тепер створює теку. |
 | — | `update.sh`: код виходу інсталятора більше не губиться в `| tail -5`. WebUI: `up` після першого входу — без прапорців (інакше `--reset`); перемикачі показують справжні prefs із `tailscaled.state`. |
 
-Досі відкрито (усе лише для kernel-режиму):
+### Kernel-режим — 2026-09-20, перевірено на nord (OnePlus AC2003, Android 12, Magisk)
 
-- **M2** — netstack ловить і TCP/53, відповідає по UDP, горутина на кожен пакет без ліміту. Після C3 DNS перехоплюють два механізми одночасно (iptables DNAT і netstack); треба залишити один — вибір потребує телефона в kernel-режимі.
-- **M5 / M6** — `getAndroidIPRules()` (правила 12500/13001, у яких і були петля CGNAT та витік таблиці exit-node) **видалено при перебазуванні на 1.102.4** (`c77f750ba`). Тепер на Android діють апстримні `baseIPRules` (5210 main → 5230 default → 5250 unreachable → 5270 table 52). Вони припускають маршрут за замовчуванням у таблиці `main`, а на Android `main` порожня (`netd` тримає маршрути в таблицях мереж). Очікувано: маркований трафік демона впирається в `unreachable`, WireGuard не працює. Потрібен власний Android-набір правил між правилами `netd` (10000–23000) з динамічним оновленням таблиці exit-node за подіями netmon. Не перевірено на пристрої.
-- **M7** — апстримна навмисна поведінка (без маршруту за замовчуванням мітку не ставлять, щоб не впертися в 5250); має сенс міняти лише разом із новими правилами з M5/M6.
+- **M2** — перехоплення DNS у netstack (`handleDNSQueryCopy` + блок у `handleLocalPackets`) **видалено**. Воно не лише ловило TCP/53 і плодило горутини — воно ковтало власний форвард резолвера до tailnet-DNS (`100.102.182.105:53` через `tailscale0`), тому будь-який запит поза MagicDNS падав у `context deadline exceeded`. У kernel-режимі системний DNS уже загортає iptables DNAT (C3), у userspace-режимі netstack і так бачить лише tailnet-трафік.
+- **M5 / M6** — `getAndroidIPRules()` справді зник у `c77f750ba`, і апстримні `baseIPRules` на телефоні непридатні (`main` порожня, `ip rule` netd 10000–32000). Новий набір у `wgengine/router/osrouter/router_androidrules_linux.go`: `12500: not fwmark <bypass> lookup 52` (нема окремого правила для 100.64/10 — петлі CGNAT M5 більше немає) і `13001: fwmark <subnet> lookup <uplink>`, де таблицю uplink (`wlan0`=1023, `r_rmnet_data0`=1019…) дає `netmon.AndroidDefaultNetworkV4/V6()` — читання правила netd `fwmark 0x0/0xffff iif lo lookup <table>` (`net/netmon/interfaces_androidroute_linux.go`; увага: ядро не надсилає `FRA_FWMARK` при mark 0). На кожну зміну мережі (`RegisterChangeCallback`) правила перезаписуються: старе 13001 видаляється **до** перерахунку таблиці — витік M6 закрито. Ті самі детектор дає `netmon` `defaultRoute=wlan0` (раніше порожньо).
+- **M7** — на Android `setBypassMark` ставить мітку завжди: без неї пакети демона впираються в 12500 і йдуть у власний тунель.
 
-Перш ніж вмикати `TUN_MODE=kernel`: (1) `ip rule` + `ip route show table all` на телефоні й перевірка, що трафік демона взагалі виходить; (2) C3 трьома `dig` (tailnet-резолвер, публічний, через exit-node).
+Перевірено: реальний TUN, `tailscale ping` до пірів, зовнішній HTTP, три DNS-сценарії (MagicDNS, публічне ім'я через tailnet-резолвер, сирий UDP до 1.1.1.1:53 — усі йдуть через 100.100.100.100), доступ по Tailscale SSH після перезапуску. **Не перевірено:** телефон як exit-node з реальним клієнтом (маршрут не схвалено в консолі) і перемикання Wi-Fi↔LTE вживу.
+
+Пастка експлуатації: `service.sh stop` по Tailscale SSH вбиває власну сесію до старту нового демона — перезапускати тільки через ADB (`setsid sh /data/adb/modules/vau_tailscale/service.sh </dev/null >/dev/null 2>&1 &`).
 
 ---
 
