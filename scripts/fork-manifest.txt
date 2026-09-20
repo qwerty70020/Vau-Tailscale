@@ -2,7 +2,7 @@
 # Checked automatically after every cherry-pick by compat/update.
 # A '✓ tag' from git means the patch applied, not that it is all there.
 base v1.102.4
-head ee6c5804a
+head f54b4d361
 [files]
 178	0	.github/workflows/build_android.yml
 243	0	.github/workflows/upstream-watch.yml
@@ -11,7 +11,7 @@ head ee6c5804a
 1	1	cmd/tailscaled/tailscaled.go
 86	0	docs/BUILD.md
 728	0	docs/superpowers/plans/2026-09-10-vau-tailscale.md
-228	0	docs/vau/AUDIT.md
+230	0	docs/vau/AUDIT.md
 337	0	docs/vau/UPSTREAM.md
 1	0	envknob/featureknob/featureknob.go
 1	1	feature/ssh/ssh.go
@@ -37,19 +37,20 @@ head ee6c5804a
 1	1	net/dns/direct_linux_test.go
 2	0	net/dns/direct_test.go
 1	1	net/dns/direct_unix_test.go
-191	0	net/dns/manager_android.go
+197	0	net/dns/manager_android.go
 27	0	net/dns/manager_android_test.go
 1	1	net/dns/manager_default.go
 2	0	net/dns/manager_linux_test.go
 27	0	net/dns/resolvconfpath_android.go
 1	1	net/dns/resolvconfpath_default.go
 2	0	net/netmon/interfaces_android.go
-1	1	net/netmon/interfaces_linux.go
+138	0	net/netmon/interfaces_androidroute_linux.go
+7	1	net/netmon/interfaces_linux.go
 1	1	net/netmon/netmon_linux.go
 1	1	net/netmon/netmon_polling.go
 19	0	net/netmon/state.go
 1	1	net/netns/netns_android.go
-8	1	net/netns/netns_linux.go
+15	1	net/netns/netns_linux.go
 1	1	net/tstun/tun.go
 19	1	paths/paths.go
 2	0	paths/paths_unix.go
@@ -74,9 +75,9 @@ head ee6c5804a
 151	0	util/osuser/user_android.go
 148	0	util/osuser/user_android_test.go
 1	1	version/version_checkformat.go
-73	0	wgengine/netstack/netstack.go
 1	0	wgengine/pendopen.go
-1	1	wgengine/router/osrouter/router_linux.go
+95	0	wgengine/router/osrouter/router_androidrules_linux.go
+28	2	wgengine/router/osrouter/router_linux.go
 [markers]
 cmd/tailscale/cli/set.go	case "linux", "android":
 cmd/tailscale/cli/up.go	case "linux", "android":
@@ -100,6 +101,7 @@ net/dns/manager_linux_test.go	//go:build !android
 net/dns/resolvconfpath_default.go	//go:build !gokrazy && !android
 net/netmon/interfaces_android.go	//go:build ignore
 net/netmon/interfaces_linux.go	//go:build linux
+net/netmon/interfaces_linux.go	// Android: main порожня, а RTM_GETLINK для net.InterfaceByIndex закритий
 net/netmon/netmon_linux.go	//go:build linux
 net/netmon/netmon_polling.go	//go:build !linux && !freebsd && !windows && !darwin
 net/netmon/state.go	"github.com/wlynxg/anet"
@@ -146,10 +148,13 @@ util/osuser/group_ids.go	out, err := exec.CommandContext(ctx, "/system/bin/id", 
 util/osuser/user.go	// overrideLookupFunc задають платформно-специфічні реалізації (user_android.go).
 util/osuser/user.go	// Android: свій lookup, бо немає ні getent, ні /etc/passwd
 version/version_checkformat.go	//go:build ignore
-wgengine/netstack/netstack.go	func (ns *Impl) handleDNSQueryCopy(query []byte, src, dst netip.AddrPort, ipVersion uint8, proto ipproto.Proto) {
-wgengine/netstack/netstack.go	if p.Dst.Port() == 53 && (p.IPProto == ipproto.UDP || p.IPProto == ipproto.TCP) {
 wgengine/pendopen.go	// TODO: android also, but IPV6
 wgengine/router/osrouter/router_linux.go	//go:build linux
+wgengine/router/osrouter/router_linux.go	if runtime.GOOS == "android" && r.netMon != nil && r.unregNetMon == nil {
+wgengine/router/osrouter/router_linux.go	// Android: delIPRules вище прибрав правило 13001 для СТАРОЇ таблиці
+wgengine/router/osrouter/router_linux.go	return androidIPRules()
+wgengine/router/osrouter/router_linux.go	args = append(args, "not")
+wgengine/router/osrouter/router_linux.go	// Таблиці netd на Android (1023 для wlan0 тощо) не мають імен у
 [absent]
 feature/taildrop/fileops_fs.go	//go:build !android
 ipn/ipnlocal/peerapi.go	if runtime.GOOS == "android" {
