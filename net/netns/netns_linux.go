@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"sync"
 	"syscall"
 
@@ -114,9 +115,15 @@ func setBypassMark(fd uintptr) error {
 	// Без типового маршруту мітку не ставимо — інакше connect: network is
 	// unreachable. Приклад: примусовий HTTP_PROXY / HTTPS_PROXY на пристрої
 	// без типового маршруту / маршруту в інтернет.
-	_, err := netmon.DefaultRouteInterface()
-	if err != nil {
-		return nil
+	//
+	// Android — виняток: там наше правило `not fwmark bypass → table 52`
+	// без мітки заверне власний трафік демона в tailscale0 (петля через
+	// exit-node), а «unreachable» від netd не загрожує — маркований пакет
+	// падає в правило мережі за замовчуванням (fwmark 0x0/0xffff iif lo).
+	if runtime.GOOS != "android" {
+		if _, err := netmon.DefaultRouteInterface(); err != nil {
+			return nil
+		}
 	}
 	if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MARK, tsconst.LinuxBypassMarkNum); err != nil {
 		return fmt.Errorf("setting SO_MARK bypass: %w", err)
