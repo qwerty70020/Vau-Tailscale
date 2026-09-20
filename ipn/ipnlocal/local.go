@@ -6527,14 +6527,19 @@ func (b *LocalBackend) routerConfigLocked(cfg *wgcfg.Config, prefs ipn.PrefsView
 	}
 
 	rs := &router.Config{
-		LocalAddrs:          unmapIPPrefixes(cfg.Addresses),
-		SubnetRoutes:        unmapIPPrefixes(prefs.AdvertiseRoutes().AsSlice()),
-		SNATSubnetRoutes:    !prefs.NoSNAT(),
-		StatefulFiltering:   doStatefulFiltering,
-		NetfilterMode:       prefs.NetfilterMode(),
-		Routes:              b.currentNode().osRoutes(),
-		NetfilterKind:       netfilterKind,
-		RemoveCGNATDropRule: nm.HasCap(tailcfg.NodeAttrDisableLinuxCGNATDropRule),
+		LocalAddrs:        unmapIPPrefixes(cfg.Addresses),
+		SubnetRoutes:      unmapIPPrefixes(prefs.AdvertiseRoutes().AsSlice()),
+		SNATSubnetRoutes:  !prefs.NoSNAT(),
+		StatefulFiltering: doStatefulFiltering,
+		NetfilterMode:     prefs.NetfilterMode(),
+		Routes:            b.currentNode().osRoutes(),
+		NetfilterKind:     netfilterKind,
+		// Android: поруч із демоном майже завжди живе офіційний застосунок
+		// зі своїм VPN (tun1, теж адреса з 100.64/10). Правило
+		// «-s 100.64.0.0/10 ! -i tailscale0 -j DROP» у ts-input відкидало б
+		// увесь вхідний трафік до вузла застосунку (Termux sshd тощо), тому
+		// на Android завжди RETURN — як за nodeAttr disable-linux-cgnat-drop-rule.
+		RemoveCGNATDropRule: nm.HasCap(tailcfg.NodeAttrDisableLinuxCGNATDropRule) || runtime.GOOS == "android",
 	}
 
 	if buildfeatures.HasSynology && distro.Get() == distro.Synology {

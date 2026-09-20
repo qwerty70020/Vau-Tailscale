@@ -1525,6 +1525,10 @@ func (r *linuxRouter) addIPRules() error {
 	// таблицю, щоб justAddIPRules поставив правило вже на нову.
 	if runtime.GOOS == "android" {
 		r.refreshAndroidUplinkTable()
+		if err := r.justAddIPRules(); err != nil {
+			return err
+		}
+		return r.androidUIDRules(true)
 	}
 
 	return r.justAddIPRules()
@@ -1727,6 +1731,9 @@ func (r *linuxRouter) addIPRulesWithIPCommand() error {
 					args = append(args, "fwmark", fmt.Sprintf("0x%x", rule.Mark))
 				}
 			}
+			if rule.IifName != "" {
+				args = append(args, "iif", rule.IifName)
+			}
 			if rule.Table != 0 {
 				if rt, ok := routeTableByNumber[rule.Table]; ok {
 					args = append(args, "table", rt.ipCmdArg())
@@ -1767,6 +1774,9 @@ func (r *linuxRouter) delIPRules() error {
 		return r.delIPRulesWithIPCommand()
 	}
 	var errAcc error
+	if runtime.GOOS == "android" {
+		errAcc = r.androidUIDRules(false)
+	}
 	for _, family := range r.addrFamilies() {
 		for _, ru := range ipRules() {
 			// Note: r is a value type here; safe to mutate it.
