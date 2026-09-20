@@ -81,6 +81,33 @@ func newOSMon(bus *eventbus.Bus, logf logger.Logf, m *Monitor) (osMon, error) {
 	}, nil
 }
 
+// parseRuleDeleted decodes the payload of an RTM_DELRULE message.
+//
+// It must be decoded as a RuleMessage: decoding it as a RouteMessage only
+// works by accident because FRA_PRIORITY and FRA_TABLE happen to share
+// their numbers with RTA_PRIORITY and RTA_TABLE. Any other FIB rule
+// attribute is misinterpreted; FRA_UID_RANGE (20) collides with RTA_PREF
+// (a uint8), so every rule with a uidrange (all of netd's on Android)
+// failed to parse and was reported with a zero priority.
+func parseRuleDeleted(data []byte) (RuleDeleted, error) {
+	var rmsg rtnetlink.RuleMessage
+	if err := rmsg.UnmarshalBinary(data); err != nil {
+		return RuleDeleted{}, err
+	}
+	rd := RuleDeleted{Table: rmsg.Table}
+	if a := rmsg.Attributes; a != nil {
+		if a.Priority != nil {
+			rd.Priority = *a.Priority
+		}
+		if a.Table != nil && *a.Table <= 0xff {
+			// Table numbers above 255 only fit in the attribute; the
+			// header then carries RT_TABLE_COMPAT.
+			rd.Table = uint8(*a.Table)
+		}
+	}
+	return rd, nil
+}
+
 func (c *nlConn) Close() error {
 	c.busClient.Close()
 	return c.conn.Close()
@@ -230,25 +257,13 @@ func (c *nlConn) Receive() (message, error) {
 	case unix.RTM_DELRULE:
 		// For https://github.com/tailscale/tailscale/issues/1591 where
 		// systemd-networkd deletes our rules.
-		// Це RTM_DELRULE, тож і розбирати треба як RuleMessage. Апстрим
-		// розбирає як RouteMessage: на Linux це збігається випадково
-		// (FRA_PRIORITY=RTA_PRIORITY=6, FRA_TABLE=RTA_TABLE=15), а правила
-		// netd на Android несуть FRA_UID_RANGE (20 = RTA_PREF, uint8) — парсер
-		// падав, і подія йшла з нульовим пріоритетом.
-		var rmsg rtnetlink.RuleMessage
-		err := rmsg.UnmarshalBinary(msg.Data)
+		rd, err := parseRuleDeleted(msg.Data)
 		if err != nil {
 			c.logf("ip rule deleted; failed to parse netlink message: %v", err)
-		} else if debugNetlinkMessages() {
-			c.logf("ip rule deleted: %+v", rmsg)
-		}
-		rd := RuleDeleted{Table: rmsg.Table}
-		if rmsg.Attributes.Priority != nil {
-			rd.Priority = *rmsg.Attributes.Priority
-		}
-		if t := rmsg.Attributes.Table; t != nil && *t <= 0xff {
-			// Номери >255 живуть лише в атрибуті; у заголовку тоді RT_TABLE_COMPAT.
-			rd.Table = uint8(*t)
+		} else {
+			// On `ip -4 rule del pref 5210 table main`, logs:
+			// monitor: ip rule deleted: {Table:254 Priority:5210}
+			c.logf("ip rule deleted: %+v", rd)
 		}
 		c.rulesDeleted.Publish(rd)
 		if debugNetlinkMessages() {

@@ -99,3 +99,54 @@ func TestIgnoreDuplicateNEWADDR(t *testing.T) {
 		}
 	})
 }
+
+func TestParseRuleDeleted(t *testing.T) {
+	u32 := func(v uint32) *uint32 { return &v }
+	tests := []struct {
+		name string
+		msg  rtnetlink.RuleMessage
+		want RuleDeleted
+	}{
+		{
+			name: "plain", // ip -4 rule del pref 5210 table main
+			msg: rtnetlink.RuleMessage{
+				Family: unix.AF_INET, Table: unix.RT_TABLE_MAIN, Action: unix.FR_ACT_TO_TBL,
+				Attributes: &rtnetlink.RuleAttributes{Priority: u32(5210), Table: u32(unix.RT_TABLE_MAIN)},
+			},
+			want: RuleDeleted{Table: 254, Priority: 5210},
+		},
+		{
+			// Android's netd installs per-uid rules; FRA_UID_RANGE
+			// collides with RTA_PREF when misread as a route message.
+			name: "uidrange",
+			msg: rtnetlink.RuleMessage{
+				Family: unix.AF_INET, Table: unix.RT_TABLE_COMPAT, Action: unix.FR_ACT_TO_TBL,
+				Attributes: &rtnetlink.RuleAttributes{
+					Priority: u32(13000), Table: u32(1027),
+					UIDRange: &rtnetlink.RuleUIDRange{Start: 0, End: 10092},
+				},
+			},
+			want: RuleDeleted{Table: unix.RT_TABLE_COMPAT, Priority: 13000},
+		},
+		{
+			name: "no attributes",
+			msg:  rtnetlink.RuleMessage{Family: unix.AF_INET, Table: 100, Action: unix.FR_ACT_TO_TBL},
+			want: RuleDeleted{Table: 100},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := tt.msg.MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := parseRuleDeleted(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("got %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
