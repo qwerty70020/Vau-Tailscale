@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"strings"
 	"sync/atomic"
 
@@ -127,6 +128,11 @@ func likelyHomeRouterIPLinux() (ret netip.Addr, myIP netip.Addr, ok bool) {
 }
 
 func defaultRoute() (d DefaultRouteDetails, err error) {
+	// Android: main порожня, а RTM_GETLINK для net.InterfaceByIndex закритий
+	// SELinux — обидва шляхи нижче дають «маршруту нема». Питаємо netd.
+	if runtime.GOOS == "android" {
+		return androidDefaultRoute()
+	}
 	v, err := defaultRouteInterfaceProcNet()
 	if err == nil {
 		d.InterfaceName = v
