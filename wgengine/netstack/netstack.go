@@ -835,61 +835,6 @@ func (ns *Impl) isLoopbackPort(port uint16) bool {
 	return false
 }
 
-// handleDNSQueryCopy обробляє перехоплений DNS-запит і надсилає відповідь
-// клієнту. Викликається в goroutine, щоб не блокувати шлях обробки пакетів.
-func (ns *Impl) handleDNSQueryCopy(query []byte, src, dst netip.AddrPort, ipVersion uint8, proto ipproto.Proto) {
-	// Запит до DNS Tailscale з таймаутом
-	ctx, cancel := context.WithTimeout(ns.ctx, 5*time.Second)
-	defer cancel()
-
-	protoStr := "udp"
-	if proto == ipproto.TCP {
-		protoStr = "tcp"
-	}
-
-	resp, err := ns.dns.Query(ctx, query, protoStr, src)
-	if err != nil {
-		if debugPackets {
-			ns.logf("DNS hijack query failed: %v", err)
-		}
-		return
-	}
-
-	// Збираємо пакет відповіді через packet.Generate:
-	// вона йде ВІД опитаного DNS-сервера ДО клієнта
-	var respPacket []byte
-	switch ipVersion {
-	case 4:
-		h := packet.UDP4Header{
-			IP4Header: packet.IP4Header{
-				Src:  dst.Addr(),
-				Dst:  src.Addr(),
-				IPID: 0,
-			},
-			SrcPort: dst.Port(),
-			DstPort: src.Port(),
-		}
-		respPacket = packet.Generate(&h, resp)
-	case 6:
-		h := packet.UDP6Header{
-			IP6Header: packet.IP6Header{
-				Src: dst.Addr(),
-				Dst: src.Addr(),
-			},
-			SrcPort: dst.Port(),
-			DstPort: src.Port(),
-		}
-		respPacket = packet.Generate(&h, resp)
-	default:
-		return
-	}
-
-	// Повертаємо відповідь назад у TUN
-	if err := ns.tundev.InjectInboundCopy(respPacket); err != nil && debugPackets {
-		ns.logf("DNS hijack inject failed: %v", err)
-	}
-}
-
 // handleLocalPackets is hooked into the tun datapath for packets leaving
 // the host and arriving at tailscaled. This method returns filter.DropSilently
 // to intercept a packet for handling, for instance traffic to quad-100.
@@ -897,24 +842,6 @@ func (ns *Impl) handleDNSQueryCopy(query []byte, src, dst netip.AddrPort, ipVers
 func (ns *Impl) handleLocalPackets(p *packet.Parsed, t *tstun.Wrapper, gro *gro.GRO) (filter.Response, *gro.GRO) {
 	if !ns.ready.Load() || ns.ctx.Err() != nil {
 		return filter.DropSilently, gro
-	}
-
-	// Перехоплюємо DNS-запити до зовнішніх серверів, якщо ввімкнено CorpDNS
-	if p.Dst.Port() == 53 && (p.IPProto == ipproto.UDP || p.IPProto == ipproto.TCP) {
-		dst := p.Dst.Addr()
-		// Запити до самого DNS Tailscale не перехоплюємо
-		if dst != serviceIP && dst != serviceIPv6 {
-			// Лише коли ввімкнено CorpDNS (--accept-dns=true)
-			if ns.lb != nil && ns.lb.Prefs().CorpDNS() {
-				// Копіюємо запит і обробляємо в goroutine
-				if query := p.Payload(); len(query) > 0 {
-					queryCopy := make([]byte, len(query))
-					copy(queryCopy, query)
-					go ns.handleDNSQueryCopy(queryCopy, p.Src, p.Dst, p.IPVersion, p.IPProto)
-				}
-				return filter.DropSilently, gro
-			}
-		}
 	}
 
 	// Determine if we care about this local packet.
