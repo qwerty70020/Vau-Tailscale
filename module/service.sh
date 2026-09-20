@@ -31,6 +31,7 @@ EXTRA_ARGS=""            # додаткові прапорці tailscaled, на�
 HOTSPOT_SHARE=0          # лише kernel: 1 = роздавати tailnet клієнтам точки доступу (MASQUERADE на tailscale0)
 HEALTH_INTERVAL=60       # секунд між перевірками здоров'я
 HEALTH_FAILS=3           # стільки провалених перевірок поспіль — і демон перезапускається
+HEALTH_STARTING_MAX=10   # стільки перевірок поспіль у NoState/Starting ПРИ мережі — вже зависання
 RESTART_MIN=5            # перша затримка перезапуску, секунд
 RESTART_MAX=300          # стеля експоненційного відкату, секунд
 HEALTHY_AFTER=600        # запуск, що прожив стільки, вважається здоровим і скидає відкат
@@ -123,9 +124,36 @@ backend_state() {
 # Здоров'я судимо за ВІДПОВІДДЮ, а не за живим pid, і за ПРАВИЛЬНОЮ відповіддю.
 # «Сокет відповів» було перевіркою тут, доки порожня політика tailnet не довела
 # її марність: status відповідав миттєво, а до вузла не міг дістатись ніхто.
+#
+# Але перезапуск лікує лише зависання. Телефон у метро між станціями, ніч без
+# Wi-Fi, демон, що чекає на control після відновлення мережі, — усе це не
+# провина демона, і кожен «лікувальний» kill тут лише подовжує паузу, бо
+# supervisor нарощує затримку. Тому: без uplink — не рахуємо взагалі (код 2);
+# NoState/Starting при живому uplink — «чекає», рахуємо окремо і терпимо
+# HEALTH_STARTING_MAX перевірок; і тільки Running-без-пінга або мовчазний
+# сокет — справжній провал (код 1).
+net_up() {
+    { ip -4 route show table all; ip -6 route show table all; } 2>/dev/null \
+        | grep -E '^default via' | grep -qvE ' dev (tun|tailscale|dummy|lo)'
+}
+
 health_ok() {
+    if ! net_up; then
+        health_why="немає uplink (default-маршруту) — демон не винен"
+        return 2
+    fi
     st=$(backend_state)
-    [ "$st" = "Running" ] || { health_why="BackendState=$st"; return 1; }
+    case "$st" in
+        Running) ;;
+        NoState|Starting)
+            health_why="BackendState=$st — чекає на control"
+            return 2
+            ;;
+        *)
+            health_why="BackendState=${st:-<сокет не відповідає>}"
+            return 1
+            ;;
+    esac
     if [ -n "$HEALTH_PEER" ]; then
         if ! timeout 20 "$CLI" --socket="$SOCK" ping -c 1 -- "$HEALTH_PEER" >/dev/null 2>&1; then
             health_why="немає відповіді від $HEALTH_PEER"
@@ -151,20 +179,36 @@ push_kuma() {
 
 health_loop() {
     fails=0
+    waiting=0
     healthy=unknown
     while true; do
         sleep "$HEALTH_INTERVAL"
         [ -f "$PIDFILE" ] || continue
         pid=$(cat "$PIDFILE" 2>/dev/null)
         kill -0 "$pid" 2>/dev/null || continue   # мертвим pid займається supervisor
-        if health_ok; then
+        health_ok
+        rc=$?
+        if [ "$rc" -eq 0 ]; then
             if [ "$healthy" != "yes" ]; then
                 hist "healthy (BackendState=Running${HEALTH_PEER:+, $HEALTH_PEER досяжний})"
                 [ "$fails" -gt 0 ] && log "health: відновився після $fails пропуск(ів)"
+                [ "$waiting" -gt 0 ] && log "health: дочекався після $waiting перевірок(и)"
                 healthy=yes
             fi
             fails=0
+            waiting=0
             push_kuma
+        elif [ "$rc" -eq 2 ]; then
+            # Не доказ хвороби: лічильник провалів не чіпаємо. Один рядок у лог
+            # на початок паузи, а не на кожну хвилину під землею.
+            waiting=$((waiting + 1))
+            [ "$waiting" -eq 1 ] && log "health: пауза — $health_why"
+            if [ "$waiting" -ge "$HEALTH_STARTING_MAX" ] && net_up; then
+                log "health: $health_why уже $waiting перевірок при живому uplink — перезапускаю демон (pid $pid)"
+                hist "перезапуск: завис у $health_why"
+                kill "$pid" 2>/dev/null
+                waiting=0
+            fi
         else
             fails=$((fails + 1))
             log "health: $health_why ($fails/$HEALTH_FAILS)"
