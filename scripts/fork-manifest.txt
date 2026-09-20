@@ -2,7 +2,7 @@
 # Checked automatically after every cherry-pick by compat/update.
 # A '✓ tag' from git means the patch applied, not that it is all there.
 base v1.102.4
-head f54b4d361
+head 6e10d3fa7
 [files]
 178	0	.github/workflows/build_android.yml
 243	0	.github/workflows/upstream-watch.yml
@@ -11,7 +11,7 @@ head f54b4d361
 1	1	cmd/tailscaled/tailscaled.go
 86	0	docs/BUILD.md
 728	0	docs/superpowers/plans/2026-09-10-vau-tailscale.md
-230	0	docs/vau/AUDIT.md
+231	0	docs/vau/AUDIT.md
 337	0	docs/vau/UPSTREAM.md
 1	0	envknob/featureknob/featureknob.go
 1	1	feature/ssh/ssh.go
@@ -46,7 +46,7 @@ head f54b4d361
 2	0	net/netmon/interfaces_android.go
 138	0	net/netmon/interfaces_androidroute_linux.go
 7	1	net/netmon/interfaces_linux.go
-1	1	net/netmon/netmon_linux.go
+15	8	net/netmon/netmon_linux.go
 1	1	net/netmon/netmon_polling.go
 19	0	net/netmon/state.go
 1	1	net/netns/netns_android.go
@@ -55,7 +55,7 @@ head f54b4d361
 19	1	paths/paths.go
 2	0	paths/paths_unix.go
 738	0	scripts/android.sh
-155	0	scripts/fork-manifest.txt
+160	0	scripts/fork-manifest.txt
 35	0	scripts/sign.sh
 52	0	server/moto-watch.sh
 1	1	ssh/tailssh/c2n.go
@@ -103,6 +103,9 @@ net/netmon/interfaces_android.go	//go:build ignore
 net/netmon/interfaces_linux.go	//go:build linux
 net/netmon/interfaces_linux.go	// Android: main порожня, а RTM_GETLINK для net.InterfaceByIndex закритий
 net/netmon/netmon_linux.go	//go:build linux
+net/netmon/netmon_linux.go	// netd на Android несуть FRA_UID_RANGE (20 = RTA_PREF, uint8) — парсер
+net/netmon/netmon_linux.go	} else if debugNetlinkMessages() {
+net/netmon/netmon_linux.go	// Номери >255 живуть лише в атрибуті; у заголовку тоді RT_TABLE_COMPAT.
 net/netmon/netmon_polling.go	//go:build !linux && !freebsd && !windows && !darwin
 net/netmon/state.go	"github.com/wlynxg/anet"
 net/netmon/state.go	// На Android net.Interface.Addrs() не працює без netlink-дозволів — беремо
@@ -158,3 +161,4 @@ wgengine/router/osrouter/router_linux.go	// Таблиці netd на Android (10
 [absent]
 feature/taildrop/fileops_fs.go	//go:build !android
 ipn/ipnlocal/peerapi.go	if runtime.GOOS == "android" {
+net/netmon/netmon_linux.go	// On `ip -4 rule del pref 5210 table main`, logs:
