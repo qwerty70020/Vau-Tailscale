@@ -230,18 +230,25 @@ func (c *nlConn) Receive() (message, error) {
 	case unix.RTM_DELRULE:
 		// For https://github.com/tailscale/tailscale/issues/1591 where
 		// systemd-networkd deletes our rules.
-		var rmsg rtnetlink.RouteMessage
+		// Це RTM_DELRULE, тож і розбирати треба як RuleMessage. Апстрим
+		// розбирає як RouteMessage: на Linux це збігається випадково
+		// (FRA_PRIORITY=RTA_PRIORITY=6, FRA_TABLE=RTA_TABLE=15), а правила
+		// netd на Android несуть FRA_UID_RANGE (20 = RTA_PREF, uint8) — парсер
+		// падав, і подія йшла з нульовим пріоритетом.
+		var rmsg rtnetlink.RuleMessage
 		err := rmsg.UnmarshalBinary(msg.Data)
 		if err != nil {
 			c.logf("ip rule deleted; failed to parse netlink message: %v", err)
-		} else {
+		} else if debugNetlinkMessages() {
 			c.logf("ip rule deleted: %+v", rmsg)
-			// On `ip -4 rule del pref 5210 table main`, logs:
-			// monitor: ip rule deleted: {Family:2 DstLength:0 SrcLength:0 Tos:0 Table:254 Protocol:0 Scope:0 Type:1 Flags:0 Attributes:{Dst:<nil> Src:<nil> Gateway:<nil> OutIface:0 Priority:5210 Table:254 Mark:4294967295 Expires:<nil> Metrics:<nil> Multipath:[]}}
 		}
-		rd := RuleDeleted{
-			Table:    rmsg.Table,
-			Priority: rmsg.Attributes.Priority,
+		rd := RuleDeleted{Table: rmsg.Table}
+		if rmsg.Attributes.Priority != nil {
+			rd.Priority = *rmsg.Attributes.Priority
+		}
+		if t := rmsg.Attributes.Table; t != nil && *t <= 0xff {
+			// Номери >255 живуть лише в атрибуті; у заголовку тоді RT_TABLE_COMPAT.
+			rd.Table = uint8(*t)
 		}
 		c.rulesDeleted.Publish(rd)
 		if debugNetlinkMessages() {
