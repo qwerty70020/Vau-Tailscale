@@ -2,7 +2,7 @@
 # Checked automatically after every cherry-pick by compat/update.
 # A '✓ tag' from git means the patch applied, not that it is all there.
 base v1.102.4
-head c163a4714
+head 9fc3f9bc4
 [files]
 178	0	.github/workflows/build_android.yml
 243	0	.github/workflows/upstream-watch.yml
@@ -11,7 +11,7 @@ head c163a4714
 1	1	cmd/tailscaled/tailscaled.go
 86	0	docs/BUILD.md
 728	0	docs/superpowers/plans/2026-09-10-vau-tailscale.md
-235	0	docs/vau/AUDIT.md
+245	0	docs/vau/AUDIT.md
 337	0	docs/vau/UPSTREAM.md
 1	0	envknob/featureknob/featureknob.go
 1	1	feature/ssh/ssh.go
@@ -20,7 +20,7 @@ head c163a4714
 5	0	go.mod
 2	0	go.sum
 81	0	hostinfo/hostinfo_android.go
-9	1	ipn/ipnlocal/local.go
+22	9	ipn/ipnlocal/local.go
 0	3	ipn/ipnlocal/peerapi.go
 1	1	ipn/ipnserver/actor.go
 1	1	ipn/localapi/cert.go
@@ -77,8 +77,8 @@ head c163a4714
 148	0	util/osuser/user_android_test.go
 1	1	version/version_checkformat.go
 1	0	wgengine/pendopen.go
-95	0	wgengine/router/osrouter/router_androidrules_linux.go
-28	2	wgengine/router/osrouter/router_linux.go
+157	0	wgengine/router/osrouter/router_androidrules_linux.go
+38	2	wgengine/router/osrouter/router_linux.go
 [markers]
 cmd/tailscale/cli/set.go	case "linux", "android":
 cmd/tailscale/cli/up.go	case "linux", "android":
@@ -89,6 +89,7 @@ feature/taildrop/paths.go	if err := os.MkdirAll(dir, 0o700); err == nil {
 go.mod	replace github.com/wlynxg/anet => github.com/BieHDC/anet v0.0.6-0.20241226223613-d47f8b766b3c
 go.mod	github.com/wlynxg/anet v0.0.5
 go.sum	github.com/BieHDC/anet v0.0.6-0.20241226223613-d47f8b766b3c/go.mod h1:eay5PRQr7fIVAMbTbchTnO9gG65Hg/uYGdc7mguHxoA=
+ipn/ipnlocal/local.go	RemoveCGNATDropRule: nm.HasCap(tailcfg.NodeAttrDisableLinuxCGNATDropRule) || runtime.GOOS == "android",
 ipn/ipnlocal/local.go	// peerCanProxyDNS каже true, але peerAPIBase порожній — повертаємо
 ipn/ipnserver/actor.go	case "darwin", "linux", "android", "illumos", "solaris", "openbsd", "freebsd":
 ipn/localapi/cert.go	//go:build !ios && !js && !ts_omit_acme
@@ -159,7 +160,9 @@ wgengine/router/osrouter/router_linux.go	if runtime.GOOS == "android" && r.netMo
 wgengine/router/osrouter/router_linux.go	// Android: delIPRules вище прибрав правило 13001 для СТАРОЇ таблиці
 wgengine/router/osrouter/router_linux.go	return androidIPRules()
 wgengine/router/osrouter/router_linux.go	args = append(args, "not")
+wgengine/router/osrouter/router_linux.go	args = append(args, "iif", rule.IifName)
 wgengine/router/osrouter/router_linux.go	// Таблиці netd на Android (1023 для wlan0 тощо) не мають імен у
+wgengine/router/osrouter/router_linux.go	errAcc = r.androidUIDRules(false)
 [absent]
 feature/taildrop/fileops_fs.go	//go:build !android
 ipn/ipnlocal/peerapi.go	if runtime.GOOS == "android" {
