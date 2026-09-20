@@ -59,6 +59,16 @@
 
 Перевірено: реальний TUN, `tailscale ping` до пірів, зовнішній HTTP, три DNS-сценарії (MagicDNS, публічне ім'я через tailnet-резолвер, сирий UDP до 1.1.1.1:53 — усі йдуть через 100.100.100.100), доступ по Tailscale SSH після перезапуску. **Не перевірено:** телефон як exit-node з реальним клієнтом (маршрут не схвалено в консолі) і перемикання Wi-Fi↔LTE вживу.
 
+#### Співіснування з VPN офіційного застосунку — 2026-09-20, nord
+
+Після ребуту застосунок Tailscale підняв свій `tun1` поруч із модулем, і виявилося три зламані шляхи (усі — через те, що netd маршрутизує uid-правилами й відбиває fwmark на відповіді, `fwmark_reflect=1`, `tcp_fwmark_accept=1`):
+
+- **вхідні до вузла застосунку** (Termux sshd :8022) висіли в SYN_RECV: SYN-ACK з відбитою міткою netd `0x30065` ловило наше правило 12500 «not bypass → 52» і випускало через tailscale0 з src адреси tun1; плюс upstream-правило `ts-input -s 100.64.0.0/10 ! -i tailscale0 -j DROP` відкидало SYN. Виправлено: правило перенесено на 16500 (після netd 13000 uid-правил і 16000 explicit-network), а `RemoveCGNATDropRule` на Android увімкнено завжди (`ipn/ipnlocal/local.go`, як nodeAttr `disable-linux-cgnat-drop-rule`).
+- **відповіді самого модуля** (ICMP, kernel-сокети на 100.90.207.62): відбита мітка subnet → netd 13000 (uid-less відповіді = overflowuid, теж у діапазоні) → tun1. Виправлено правилом 12500 «fwmark <subnet> iif lo → 52».
+- **форвардер DNS демона** до tailnet-резолвера: немарковані uid-0 сокети → 13000 → tun1 → `context deadline exceeded`. Виправлено правилом 12400 «to 100.64/10 (fd7a:115c:a1e0::/48) uidrange 0-0 → 52», ставиться через `ip rule` (`androidUIDRules`), бо `tailscale/netlink` не вміє uidrange.
+
+Підсумковий набір на Android: 12400 uid-0 → 52; 12500 subnet+iif lo → 52; 16500 not-bypass → 52; 16501 subnet → uplink. Перевірено з активним `tun1`: Termux через вузол застосунку, sshd/ICMP через вузол модуля, `tailscale dns query` через 100.102.182.105, MagicDNS, `ping example.com`, зовнішній HTTP, `tailscale ping`.
+
 Пастка експлуатації: `service.sh stop` по Tailscale SSH вбиває власну сесію до старту нового демона — перезапускати тільки через ADB (`setsid sh /data/adb/modules/vau_tailscale/service.sh </dev/null >/dev/null 2>&1 &`).
 
 ### Health-loop і мережа, якої нема — 2026-09-20, moto
