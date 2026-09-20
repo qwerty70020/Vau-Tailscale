@@ -2,7 +2,7 @@
 # Checked automatically after every cherry-pick by compat/update.
 # A '✓ tag' from git means the patch applied, not that it is all there.
 base v1.102.4
-head 0dfc3130a
+head c163a4714
 [files]
 178	0	.github/workflows/build_android.yml
 243	0	.github/workflows/upstream-watch.yml
@@ -11,7 +11,7 @@ head 0dfc3130a
 1	1	cmd/tailscaled/tailscaled.go
 86	0	docs/BUILD.md
 728	0	docs/superpowers/plans/2026-09-10-vau-tailscale.md
-231	0	docs/vau/AUDIT.md
+235	0	docs/vau/AUDIT.md
 337	0	docs/vau/UPSTREAM.md
 1	0	envknob/featureknob/featureknob.go
 1	1	feature/ssh/ssh.go
@@ -29,7 +29,7 @@ head 0dfc3130a
 25	0	module/action.sh
 54	0	module/customize.sh
 7	0	module/module.prop
-292	0	module/service.sh
+336	0	module/service.sh
 0	0	module/skip_mount
 26	0	module/uninstall.sh
 157	0	module/update.sh
@@ -56,9 +56,9 @@ head 0dfc3130a
 19	1	paths/paths.go
 2	0	paths/paths_unix.go
 738	0	scripts/android.sh
-164	0	scripts/fork-manifest.txt
+166	0	scripts/fork-manifest.txt
 35	0	scripts/sign.sh
-52	0	server/moto-watch.sh
+126	0	server/moto-watch.sh
 1	1	ssh/tailssh/c2n.go
 1	1	ssh/tailssh/hostkeys.go
 27	1	ssh/tailssh/incubator.go
