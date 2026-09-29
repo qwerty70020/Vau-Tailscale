@@ -19,9 +19,15 @@
 #
 # Повідомлення йдуть лише при ЗМІНІ стану, інакше кожні п'ять хвилин у чат
 # падав би той самий текст і його перестали б читати.
+#
+# Живе в Vau-Tailscale (server/), cron на home-server викликає файл прямо з клону:
+#   */5 * * * * /home/vau/repos/Vau-Tailscale/server/moto-watch.sh
+# Серверний бік (токен, cron, ssh-аліаси) описано у Vau-Server: AGENT.md §3.4.
 set -u
 
-ENVFILE=/home/vau/vauserver/.env
+# Токен домашнього бота (@vau_hs_bot) — з репо Vau-Server. До 2026-09-29 тут стояв
+# неіснуючий /home/vau/vauserver/.env: стани писались у лог, а в Telegram не йшло нічого.
+ENVFILE=${MOTO_WATCH_ENV:-/home/vau/repos/Vau-Server/.env}
 STATEFILE="$HOME/.moto-watch.state"
 LOGFILE="$HOME/moto-watch.log"
 # телефон:вузол,вузол — вузли це ssh-аліаси, у ~/.ssh/config вони вказують
