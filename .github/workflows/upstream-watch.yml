@@ -27,6 +27,14 @@ on:
     - cron: "17 6 * * *"   # щодня, рано вранці UTC
   workflow_dispatch:
 
+# gh обирає базовий репозиторій за remote'ами, і `upstream` для нього
+# пріоритетніший за `origin`. Після `git remote add upstream` у кроці rebase
+# `gh pr create` / `gh issue create` без цього йдуть у tailscale/tailscale і
+# падають з «Resource not accessible by integration» (так упав запуск
+# 2026-09-30 на v1.102.5). Тому репозиторій прибитий явно.
+env:
+  GH_REPO: ${{ github.repository }}
+
 permissions:
   contents: write
   pull-requests: write
