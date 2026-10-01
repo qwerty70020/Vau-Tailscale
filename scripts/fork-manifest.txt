@@ -1,18 +1,19 @@
 # fork delta manifest — regenerate with: scripts/android.sh manifest --write
 # Checked automatically after every cherry-pick by compat/update.
 # A '✓ tag' from git means the patch applied, not that it is all there.
-base v1.102.4
-head 9fc3f9bc4
+base f6d1f5e2a
+head e9bae09e0
 [files]
 178	0	.github/workflows/build_android.yml
-243	0	.github/workflows/upstream-watch.yml
+254	0	.github/workflows/upstream-watch.yml
 1	1	cmd/tailscale/cli/set.go
 1	1	cmd/tailscale/cli/up.go
 1	1	cmd/tailscaled/tailscaled.go
 86	0	docs/BUILD.md
 728	0	docs/superpowers/plans/2026-09-10-vau-tailscale.md
 245	0	docs/vau/AUDIT.md
-337	0	docs/vau/UPSTREAM.md
+24	0	docs/vau/README.md
+366	0	docs/vau/UPSTREAM.md
 1	0	envknob/featureknob/featureknob.go
 1	1	feature/ssh/ssh.go
 0	1	feature/taildrop/fileops_fs.go
@@ -55,10 +56,10 @@ head 9fc3f9bc4
 1	1	net/tstun/tun.go
 19	1	paths/paths.go
 2	0	paths/paths_unix.go
-738	0	scripts/android.sh
-166	0	scripts/fork-manifest.txt
+868	0	scripts/android.sh
+169	0	scripts/fork-manifest.txt
 35	0	scripts/sign.sh
-126	0	server/moto-watch.sh
+132	0	server/moto-watch.sh
 1	1	ssh/tailssh/c2n.go
 1	1	ssh/tailssh/hostkeys.go
 27	1	ssh/tailssh/incubator.go
