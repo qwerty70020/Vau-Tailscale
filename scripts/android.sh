@@ -5,6 +5,7 @@
 #   ./scripts/android.sh check [arm64]
 #   ./scripts/android.sh compat [--check] [--build] [--rc] [--squash] [stop-tag]
 #   ./scripts/android.sh update [--dry-run] [--squash] [--no-build] [target-tag]
+#   ./scripts/android.sh promote [--dry-run] [--no-build] [target-tag]
 #   ./scripts/android.sh manifest [--write]
 #   ./scripts/android.sh verify [base-ref]
 #
@@ -725,6 +726,134 @@ $coauthors"
     echo "  git checkout $original_branch  — повернутися"
 }
 
+# Злиття PR від upstream-watch. Гілка auto/rebase-vX.Y.Z — це наш патч,
+# перенесений cherry-pick'ом на новий upstream-тег, тобто вже готовий наступний
+# стан робочої гілки. Merge, squash чи rebase кнопкою GitHub тут не годяться:
+# історія форку лінійна (тег + патч), і сторож бере діапазон `тег..гілка` для
+# cherry-pick — merge-коміт або порожні дублікати в ньому ламають кожен
+# наступний запуск. Тому робоча гілка переставляється на вершину auto-гілки, а
+# потім перейменовується під нову базу (android-vX.Y.Z), щоб ім'я не брехало
+# про версію. Старий tip лишається в backup/…, тож крок зворотний.
+#
+# Перейменування йде через API GitHub: він сам переносить дефолтну гілку, захист
+# і відкриті PR. У CI це неможливо — дефолтну гілку перейменовує лише
+# адміністратор, а GITHUB_TOKEN таких прав не має. Тому крок живе тут, під
+# обліковкою людини, разом із force-push, який і так робиться руками.
+cmd_promote() {
+    local target="" dry_run="" no_build=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --dry-run)  dry_run="1"; shift ;;
+            --no-build) no_build="1"; shift ;;
+            *)          target="$1"; shift ;;
+        esac
+    done
+
+    local cur
+    cur=$(git rev-parse --abbrev-ref HEAD)
+    case "$cur" in
+        android-v*) : ;;
+        *) echo "promote запускається з робочої гілки android-vX.Y.Z, а не з $cur"; exit 1 ;;
+    esac
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "Робоче дерево не чисте — спершу закоміть або сховай зміни"; exit 1
+    fi
+
+    git fetch -q --prune origin
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$cur")" ]; then
+        echo "HEAD не збігається з origin/$cur: незапушені коміти не потрапили б в auto-гілку"; exit 1
+    fi
+
+    local from="v$(cat VERSION.txt)"
+    if [ -z "$target" ]; then
+        # Найновіша auto-гілка сторожа; порядок за версією, не за абеткою.
+        target=$(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/auto/rebase-v*' \
+                   | sed 's|^origin/auto/rebase-||' | sort -V | tail -1)
+        [ -n "$target" ] || { echo "Немає жодної гілки origin/auto/rebase-v*"; exit 1; }
+    fi
+    [[ "$target" =~ ^v ]] || target="v$target"
+    local auto="auto/rebase-$target" new="android-$target"
+    if [ "$from" = "$target" ]; then echo "Уже на $target"; exit 0; fi
+    if ! git rev-parse -q --verify "origin/$auto" >/dev/null; then
+        echo "Гілки origin/$auto немає — сторож її ще не створив"; exit 1
+    fi
+
+    echo "Злиття: $cur ($from) → $new ($target) з origin/$auto"
+
+    git remote add upstream https://github.com/tailscale/tailscale.git 2>/dev/null || true
+    git fetch -q --no-tags upstream "refs/tags/$from:refs/tags/$from" "refs/tags/$target:refs/tags/$target"
+
+    # Гейт 1: auto-гілка справді сидить на $target.
+    local auto_ver
+    auto_ver=$(git show "origin/$auto:VERSION.txt")
+    if [ "v$auto_ver" != "$target" ]; then
+        echo "✗ VERSION.txt на origin/$auto каже $auto_ver, а не ${target#v}"; exit 1
+    fi
+    # Гейт 2: патч перенесено цілком — комітів стільки ж, скільки на робочій гілці.
+    local n_cur n_auto
+    n_cur=$(git rev-list --count "refs/tags/$from..origin/$cur")
+    n_auto=$(git rev-list --count "refs/tags/$target..origin/$auto")
+    if [ "$n_cur" != "$n_auto" ]; then
+        echo "✗ на $cur патч = $n_cur комітів, на $auto = $n_auto: auto-гілка відстала,"
+        echo "  дочекайся наступного запуску сторожа або запусти upstream-watch вручну"; exit 1
+    fi
+    echo "  патч: $n_cur комітів, перенесено всі"
+    # Гейт 3: маніфест — кожен шматок патчу досі в дереві auto-гілки. Те саме
+    # твердження, що й у update: «cherry-pick пройшов» ≠ «патч на місці».
+    echo "Маніфест на origin/$auto:"
+    git checkout -q --detach "origin/$auto"
+    local mf_ok="1"
+    verify_manifest "refs/tags/$target" "$MANIFEST_REL" || mf_ok=""
+    git checkout -q "$cur"
+    [ -n "$mf_ok" ] || { echo "✗ Патч на auto-гілці неповний. Не зливаю."; exit 1; }
+
+    local old new_sha slug backup
+    old=$(git rev-parse "origin/$cur")
+    new_sha=$(git rev-parse "origin/$auto")
+    # Slug з origin, а не з `gh repo view`: gh надає перевагу remote `upstream`.
+    slug=$(git remote get-url origin)
+    case "$slug" in
+        *github.com[:/]*) slug="${slug#*github.com[:/]}"; slug="${slug%.git}" ;;
+        *) echo "origin не на GitHub ($slug), а перейменування йде через його API"; exit 1 ;;
+    esac
+    backup="backup/$cur-pre-${target#v}"
+
+    if [ -n "$dry_run" ]; then
+        echo "[dry-run] зробив би:"
+        echo "  push origin ${old:0:9} → $backup"
+        echo "  push --force-with-lease origin ${new_sha:0:9} → $cur"
+        echo "  gh api POST repos/$slug/branches/$cur/rename → $new"
+        echo "  локально: $cur → $new, відстежує origin/$new"
+        echo "  push origin --delete $auto"
+        [ -n "$no_build" ] || echo "  gh workflow run build_android.yml --ref $new"
+        return
+    fi
+
+    git push -q origin "$old:refs/heads/$backup"
+    echo "  резерв: origin/$backup = ${old:0:9}"
+    git push -q --force-with-lease="refs/heads/$cur:$old" origin "$new_sha:refs/heads/$cur"
+    echo "  origin/$cur → ${new_sha:0:9} (PR сторожа GitHub позначить як merged)"
+
+    gh api -X POST "repos/$slug/branches/$cur/rename" -f new_name="$new" --silent
+    git branch -m "$cur" "$new"
+    git fetch -q --prune origin
+    git branch -q -u "origin/$new"
+    git remote set-head origin -a >/dev/null
+    git reset -q --hard "origin/$new"
+    git push -q origin --delete "$auto"
+    echo "  гілка: $new (дефолтна на GitHub, локально відстежує origin/$new); $auto прибрано"
+
+    if [ -n "$no_build" ]; then
+        echo ""
+        echo "! реліз не запущено (--no-build): gh workflow run build_android.yml -R $slug --ref $new"
+        return
+    fi
+    gh workflow run build_android.yml -R "$slug" --ref "$new"
+    echo ""
+    echo "✓ $target: гілка $new, реліз v${target#v}-vau збирається в CI."
+    echo "  Далі на телефоні: «Оновлення → Встановити» і перезавантажитись."
+}
+
 # --- Головна частина ---
 
 case "${1:-}" in
@@ -732,7 +861,8 @@ case "${1:-}" in
     check)    shift; cmd_check "$@" ;;
     compat)   shift; cmd_compat "$@" ;;
     update)   shift; cmd_update "$@" ;;
+    promote)  shift; cmd_promote "$@" ;;
     manifest) shift; cmd_manifest "$@" ;;
     verify)   shift; cmd_verify "$@" ;;
-    *)        echo "Використання: $0 {build|check|compat|update|manifest|verify} [опції]"; exit 1 ;;
+    *)        echo "Використання: $0 {build|check|compat|update|promote|manifest|verify} [опції]"; exit 1 ;;
 esac
