@@ -2,7 +2,7 @@
 # Checked automatically after every cherry-pick by compat/update.
 # A '✓ tag' from git means the patch applied, not that it is all there.
 base f6d1f5e2a
-head e9bae09e0
+head 4668ba7f3
 [files]
 178	0	.github/workflows/build_android.yml
 254	0	.github/workflows/upstream-watch.yml
@@ -30,9 +30,9 @@ head e9bae09e0
 25	0	module/action.sh
 54	0	module/customize.sh
 7	0	module/module.prop
-336	0	module/service.sh
+346	0	module/service.sh
 0	0	module/skip_mount
-26	0	module/uninstall.sh
+31	0	module/uninstall.sh
 157	0	module/update.sh
 758	0	module/webroot/index.html
 1	1	net/dns/direct_linux_test.go
@@ -57,7 +57,7 @@ head e9bae09e0
 19	1	paths/paths.go
 2	0	paths/paths_unix.go
 868	0	scripts/android.sh
-169	0	scripts/fork-manifest.txt
+170	0	scripts/fork-manifest.txt
 35	0	scripts/sign.sh
 132	0	server/moto-watch.sh
 1	1	ssh/tailssh/c2n.go
