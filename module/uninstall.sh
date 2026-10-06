@@ -16,11 +16,16 @@
 STATE=/data/adb/tailscale
 LOG=/data/local/tmp/vau_tailscale.log
 
-for f in "$STATE/supervisor.pid" "$STATE/health.pid" "$STATE/tailscaled.pid"; do
-    [ -f "$f" ] || continue
-    pid=$(cat "$f" 2>/dev/null)
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null
-    rm -f "$f"
+# Як і в service.sh: pid із файлу після ребуту може належати чужому процесу,
+# тож убиваємо лише той, чий cmdline збігається з очікуваним.
+for f in "$STATE/supervisor.pid:service.sh" "$STATE/health.pid:service.sh" "$STATE/tailscaled.pid:tailscaled"; do
+    file=${f%%:*}
+    pid=$(cat "$file" 2>/dev/null)
+    case "$pid" in ''|*[!0-9]*) rm -f "$file"; continue ;; esac
+    case "$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)" in
+        *"${f#*:}"*) kill "$pid" 2>/dev/null ;;
+    esac
+    rm -f "$file"
 done
 
 echo "[$(date '+%m-%d %H:%M:%S')] модуль видалено; стан збережено в $STATE" >> "$LOG"

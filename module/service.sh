@@ -78,6 +78,20 @@ log() { echo "[$(date '+%m-%d %H:%M:%S')] $*" >> "$LOG"; }
 # відповіддю, а не спогадом.
 hist() { echo "[$(date '+%m-%d %H:%M:%S')] $*" >> "$HIST"; }
 
+# pid-файли переживають перезавантаження, а pid-и — ні: 2026-10-06 після
+# ребуту health.pid указував на GNSS HAL, supervisor.pid — на чужий процес,
+# і «supervisor уже працює» лишило телефон поза tailnet. Тому живий pid ще
+# не наш: перевіряємо, що /proc/$pid/cmdline містить очікуване ім'я.
+# pid_ours <pidfile> <шаблон> — друкує pid і повертає 0, лише якщо це наш процес.
+pid_ours() {
+    _pid=$(cat "$1" 2>/dev/null)
+    case "$_pid" in ''|*[!0-9]*) return 1 ;; esac
+    case "$(tr '\0' ' ' < "/proc/$_pid/cmdline" 2>/dev/null)" in
+        *"$2"*) echo "$_pid"; return 0 ;;
+    esac
+    return 1
+}
+
 # ----- допоміжні функції ------------------------------------------------------
 
 tun_flag() {
@@ -183,9 +197,7 @@ health_loop() {
     healthy=unknown
     while true; do
         sleep "$HEALTH_INTERVAL"
-        [ -f "$PIDFILE" ] || continue
-        pid=$(cat "$PIDFILE" 2>/dev/null)
-        kill -0 "$pid" 2>/dev/null || continue   # мертвим pid займається supervisor
+        pid=$(pid_ours "$PIDFILE" tailscaled) || continue   # мертвим pid займається supervisor
         health_ok
         rc=$?
         if [ "$rc" -eq 0 ]; then
@@ -280,11 +292,9 @@ stop_all() {
     # Спершу supervisor, потім health-цикл, потім демон: убий демон, поки
     # supervisor ще живий, — і за секунду його перезапустять, що виглядає
     # точнісінько як зупинка, яка не спрацювала.
-    for f in "$SUPFILE" "$HLTFILE" "$PIDFILE"; do
-        [ -f "$f" ] || continue
-        pid=$(cat "$f" 2>/dev/null)
-        [ -n "$pid" ] && kill "$pid" 2>/dev/null
-        rm -f "$f"
+    for f in "$SUPFILE:service.sh" "$HLTFILE:service.sh" "$PIDFILE:tailscaled"; do
+        pid=$(pid_ours "${f%%:*}" "${f#*:}") && kill "$pid" 2>/dev/null
+        rm -f "${f%%:*}"
     done
     log "зупинено на вимогу"
     hist "зупинено на вимогу"
@@ -321,7 +331,7 @@ if [ ! -x "$BIN" ]; then
     exit 0
 fi
 
-if [ -f "$SUPFILE" ] && kill -0 "$(cat "$SUPFILE" 2>/dev/null)" 2>/dev/null; then
+if pid_ours "$SUPFILE" service.sh >/dev/null; then
     log "supervisor уже працює — нічого робити"
     exit 0
 fi
