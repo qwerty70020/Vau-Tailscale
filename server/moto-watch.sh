@@ -32,7 +32,15 @@ STATEFILE="$HOME/.moto-watch.state"
 LOGFILE="$HOME/moto-watch.log"
 # телефон:вузол,вузол — вузли це ssh-аліаси, у ~/.ssh/config вони вказують
 # на tailnet-адреси, за якими ми ж їх і знаходимо в `tailscale status`.
-DEVICES="moto:moto-root,phone nord:nord-root,nord"
+#
+# Імена 2026-11-07: `edge` — стара Motorola (було `phone`), `edge-root` — її кореневий
+# вузол (було `moto-root`); `nord` лишився собою. Вузли шукаються по АДРЕСІ з `ssh -G`,
+# а не по імені в tailnet, тому перейменування вузлів у Tailscale сторожа не зачепило —
+# але аліаси МУСЯТЬ існувати на тій машині, де крутиться cron (тут це дім, і 11-07
+# `edge`/`edge-root` туди дописані разом з ключем `id_ed25519_phone`).
+# `fold` свідомо не стережемо: це пульт, бот на ньому не живе, і його недосяжність
+# нічого не ламає.
+DEVICES="edge:edge-root,edge nord:nord-root,nord"
 
 BOT_TOKEN=$(grep -m1 '^BOT_TOKEN=' "$ENVFILE" | cut -d= -f2- | tr -d '"'"'"'')
 CHAT_ID=$(grep -m1 '^BOT_CHAT_ID=' "$ENVFILE" | cut -d= -f2- | tr -d '"'"'"'')
