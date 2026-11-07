@@ -82,6 +82,14 @@ hist() { echo "[$(date '+%m-%d %H:%M:%S')] $*" >> "$HIST"; }
 # ребуту health.pid указував на GNSS HAL, supervisor.pid — на чужий процес,
 # і «supervisor уже працює» лишило телефон поза tailnet. Тому живий pid ще
 # не наш: перевіряємо, що /proc/$pid/cmdline містить очікуване ім'я.
+#
+# ⛔ Шаблон мусить бути УНІКАЛЬНИМ, і 10-06 цього не дотягнули. Перевірка стояла
+# на підрядку `service.sh`, а такий файл має КОЖЕН модуль Magisk — тож вона ловила
+# чужий процес так само охоче, як свій. 2026-11-07 після оновлення на 1.102.5 Норд
+# саме так лишився без другої дороги: `supervisor уже працює — нічого робити` о
+# 12:31:02 при нулі власних демонів, вузол `nord-root` офлайн. Тому шаблон тепер —
+# ПОВНИЙ шлях скрипта (`$MODDIR/service.sh`): він не збігається ні з чиїм іншим.
+#
 # pid_ours <pidfile> <шаблон> — друкує pid і повертає 0, лише якщо це наш процес.
 pid_ours() {
     _pid=$(cat "$1" 2>/dev/null)
@@ -292,7 +300,7 @@ stop_all() {
     # Спершу supervisor, потім health-цикл, потім демон: убий демон, поки
     # supervisor ще живий, — і за секунду його перезапустять, що виглядає
     # точнісінько як зупинка, яка не спрацювала.
-    for f in "$SUPFILE:service.sh" "$HLTFILE:service.sh" "$PIDFILE:tailscaled"; do
+    for f in "$SUPFILE:$MODDIR/service.sh" "$HLTFILE:$MODDIR/service.sh" "$PIDFILE:tailscaled"; do
         pid=$(pid_ours "${f%%:*}" "${f#*:}") && kill "$pid" 2>/dev/null
         rm -f "${f%%:*}"
     done
@@ -331,7 +339,7 @@ if [ ! -x "$BIN" ]; then
     exit 0
 fi
 
-if pid_ours "$SUPFILE" service.sh >/dev/null; then
+if pid_ours "$SUPFILE" "$MODDIR/service.sh" >/dev/null; then
     log "supervisor уже працює — нічого робити"
     exit 0
 fi
